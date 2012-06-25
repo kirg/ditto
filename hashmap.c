@@ -237,6 +237,7 @@ struct DittoFile {
 
 
 
+#if 0
 void
     dittoing (
         struct FilesizeBucket * fzbucket
@@ -326,4 +327,5 @@ void
     }
 }
 
+#endif
 

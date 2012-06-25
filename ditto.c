@@ -244,7 +244,7 @@ wprintf(L"files: %d files\n", all_files.count);
 
 wprintf(L"hashing done\n");
 
-    find_dittos( );
+    //find_dittos( );
 
     dump_hash( );
 }
