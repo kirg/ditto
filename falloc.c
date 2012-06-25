@@ -171,7 +171,8 @@ void
 
 FastAlloc
     new_falloc (
-        wchar_t *   type
+        wchar_t *   type,
+        int         size
 )
 {
     struct FastAllocatorContext * fac;
@@ -186,7 +187,7 @@ FastAlloc
         fac->next   = NULL;
         fac->end    = NULL;
 
-        fac->size   = 0;
+        fac->size   = size;
         fac->free   = NULL;
 
         fac->type   = type;
@@ -200,12 +201,14 @@ void
         FastAlloc   fa
 )
 {
-    struct FastAllocatorContext * fac = (struct FastAllocatorContext *)fa;
+    struct FastAllocatorContext * fac;
 
     struct VirtAlloc *  va;
     struct VirtAlloc *  next;
 
-    for ( va = fac->allocs; va != NULL; va = next ) {
+    fac = (struct FastAllocatorContext *)fa;
+
+    for ( va = fac->vallocs; va != NULL; va = next ) {
 
         if (!VirtualFree( va->address, 0 /* va->size */, MEM_RELEASE )) {
             wprintf( L"VirtualFree(%016X, %d) failed\n", va->address, va->size );

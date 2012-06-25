@@ -78,7 +78,7 @@ void
 
     path    = falloc( fa_String, sizeof(wchar_t) * (wcslen(pathW) + 1) );
     dir     = falloc( fa_Directory, sizeof(struct Directory) );
-    file    = falloc( fa_File, sizeof(struct File) );
+    link    = falloc( fa_File, sizeof(struct Link) );
 
     if (path && dir && link) {
         int i;
@@ -129,7 +129,7 @@ void
 
     path    = falloc( fa_String, sizeof(wchar_t) * (strlen(pathA) + 1) );
     dir     = falloc( fa_Directory, sizeof(struct Directory) );
-    file    = falloc( fa_File, sizeof(struct File) );
+    link    = falloc( fa_File, sizeof(struct Link) );
 
     if (path && dir && link) {
         int i;

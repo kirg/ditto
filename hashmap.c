@@ -1,5 +1,7 @@
 #include "list.h"
 
+#include <malloc.h>
+
 /*
 
 
@@ -48,20 +50,12 @@ struct Hash hash;
 
 FastAlloc fa_FilesizeBucket;
 
-struct FilesizeBucket *
-    new_FilesizeBucket (
-        void
-)
-{
-    return falloc( fa_FilesizeBucket, sizeof(struct FilesizeBucket) );
-}
-
 void
     hashmap_init (
         void
 )
 {
-    fa_FilesizeBucket = new_falloc( L"FilesizeBucket" );
+    fa_FilesizeBucket = new_falloc( L"FilesizeBucket", sizeof(struct FilesizeBucket) );
 }
 
 void
@@ -69,10 +63,9 @@ void
         void
 )
 {
-    free( hash.zerosize_bucket );
     free( hash.buckets );
 
-    free_falloc( fa_FilesizeBucket );
+    delete_falloc( fa_FilesizeBucket );
 }
 
 #define MIN_HASH_BUCKETS    (16)
@@ -94,7 +87,7 @@ wprintf(L"hash_init: num_files=%d, num_buckets=%d\n", num_files, hash.num_bucket
 
     hash.buckets = malloc( hash.num_buckets * sizeof(struct HashBucketHead) );
 
-    hash.zerosize_bucket = malloc( sizeof(struct FilesizeBucket) );
+    hash.zerosize_bucket = falloc( fa_FilesizeBucket, sizeof(struct FilesizeBucket) );
 
     if ( hash.buckets && hash.zerosize_bucket ) {
         int i;
@@ -150,8 +143,7 @@ void
 
         if (fzbucket == NULL) {
 
-            //fzbucket = malloc( sizeof(struct FilesizeBucket) );
-            fzbucket = new_FilesizeBucket( );
+            fzbucket = falloc( fa_FilesizeBucket, sizeof(struct FilesizeBucket) );
 
             if (fzbucket == NULL) {
                 wprintf( L"malloc FilesizeBucket failed\n");

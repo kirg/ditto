@@ -8,7 +8,7 @@ void
         void
 )
 {
-    fa = new_FastAllocator( L"List",
+    fa = new_falloc( L"List",
             (sizeof(struct Head) > sizeof(struct Link)) ?
                 sizeof(struct Head) :
                     sizeof(struct Link) );
@@ -19,7 +19,7 @@ void
         void
 )
 {
-    free_FastAllocator( fa );
+    delete_falloc( fa );
 }
 
 struct Link *
