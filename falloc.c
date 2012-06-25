@@ -16,14 +16,17 @@ struct VirtAlloc {
 
 
 struct FastAllocatorContext {
-    struct VirtAlloc * allocs;
+    void *      free;   /* stack of free bufs */
+    int         size;   /* == 0 -> variable length */
 
-    long long   total;
+    long long   total;  /* total allocated */
 
-    char *      next_free;
-    char *      end;
+    char *      next;   /* next available slot in valloc */
+    char *      end;    /* last valid offset in valloc */
 
-    wchar_t *   type;
+    wchar_t *   type;   /* user-defined identifier for falloc */
+
+    struct VirtAlloc * vallocs;
 };
 
 
@@ -52,65 +55,122 @@ void *
 
     fac = (struct FastAllocatorContext *)fa;
 
-    do {
+    if (size < fac->size) {
 
-        if ((fac->next_free + size) < fac->end) {
+        buf == NULL;
 
-            buf = fac->next_free;
+    } else if (fac->free != NULL) {
 
-            fac->next_free += size;
-            fac->total += size;
+        buf = fac->free;
+        fac->free = *(void **)fac->free;
 
-            break;
+    } else {
 
-        } else {
+        do {
 
-            struct VirtAlloc *  v;
-            int                 valloc_size;
+            if ((fac->next + size) < fac->end) {
 
-            valloc_size = (fac->allocs == NULL) ?
-                                VIRTALLOC_MINSIZE :
-                                    fac->allocs->size * VIRTALLOC_FACTOR;
+                buf = fac->next;
 
-            if (valloc_size > VIRTALLOC_MAXSIZE) {
-                valloc_size = VIRTALLOC_MAXSIZE;
-            }
+                fac->next += size;
+                fac->total += size;
 
-            v = malloc( sizeof(struct VirtAlloc) );
+                break;
 
-            if (v) {
+            } else {
 
-                v->address  = VirtualAlloc( NULL, valloc_size,
-                                    MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE );
+                struct VirtAlloc *  v;
+                int                 valloc_size;
 
-                if (v->address) {
+                valloc_size = (fac->vallocs == NULL) ?
+                                    VIRTALLOC_MINSIZE :
+                                        fac->vallocs->size * VIRTALLOC_FACTOR;
 
-                    v->next     = fac->allocs;
-                    fac->allocs = v;
+                if (valloc_size > VIRTALLOC_MAXSIZE) {
+                    valloc_size = VIRTALLOC_MAXSIZE;
+                }
 
-                    v->size     = valloc_size;
+                v = malloc( sizeof(struct VirtAlloc) );
 
-wprintf(L"VirtualAlloc(%d bytes) for %s: %p\n", valloc_size, fac->type, v->address);
+                if (v) {
 
-                    fac->next_free  = v->address;
-                    fac->end        = (char *)v->address + v->size;
+                    v->address  = VirtualAlloc( NULL, valloc_size,
+                                        MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE );
 
-                } else {
+                    if (v->address) {
 
-                    free(v);
+                        v->next     = fac->vallocs;
+                        fac->vallocs = v;
+
+                        v->size     = valloc_size;
+
+    wprintf(L"VirtualAlloc(%d bytes) for %s: %p\n", valloc_size, fac->type, v->address);
+
+                        fac->next   = v->address;
+                        fac->end    = (char *)v->address + v->size;
+
+                    } else {
+
+                        free(v);
+                    }
+
                 }
 
             }
 
-        }
-
-    } while (1);
+        } while (1);
+    }
 
     return buf;
 }
 
+#if 0
+void *
+    xalloc (
+        FastAlloc   fa
+)
+{
+    struct FastAllocatorContext * fac = (struct FastAllocatorContext *)fa;
+    void * buf;
+
+    if (fac->size != 0) {
+
+        if (fac->free != NULL) {
+
+            buf = fac->free;
+            fac->free = *(void **)fac->free;
+
+        } else {
+
+            buf = falloc( fa, fac->size );
+
+        }
+
+    } else {
+        buf = NULL;
+    }
+
+    return buf;
+}
+#endif
+
+void
+    ffree (
+        FastAlloc   fa,
+        void *      buf
+)
+{
+    struct FastAllocatorContext * fac = (struct FastAllocatorContext *)fa;
+    
+    if (fac->size != 0) {
+        *(void **)buf = fac->free;
+        fac->free = buf;
+    }
+}
+
+
 FastAlloc
-    new_FastAllocator (
+    new_falloc (
         wchar_t *   type
 )
 {
@@ -119,21 +179,24 @@ FastAlloc
     fac = malloc( sizeof(struct FastAllocatorContext) );
 
     if (fac) {
-        fac->allocs     = NULL;
+        fac->vallocs = NULL;
 
-        fac->total      = 0;
+        fac->total  = 0;
 
-        fac->next_free  = NULL;
-        fac->end        = NULL;
+        fac->next   = NULL;
+        fac->end    = NULL;
 
-        fac->type       = type;
+        fac->size   = 0;
+        fac->free   = NULL;
+
+        fac->type   = type;
     }
 
     return (FastAlloc)fac;
 }
 
 void
-    free_FastAllocator (
+    delete_falloc (
         FastAlloc   fa
 )
 {

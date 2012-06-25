@@ -8,7 +8,10 @@ void
         void
 )
 {
-    fa = new_FastAllocator( L"Link" );
+    fa = new_FastAllocator( L"List",
+            (sizeof(struct Head) > sizeof(struct Link)) ?
+                sizeof(struct Head) :
+                    sizeof(struct Link) );
 }
 
 void

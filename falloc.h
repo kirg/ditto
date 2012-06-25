@@ -1,8 +1,6 @@
 #ifndef _FALLOC_H_
 #define _FALLOC_H_
 
-#include <windows.h>
-
 typedef void *  FastAlloc;
 
 void
@@ -16,12 +14,13 @@ void
 );
 
 FastAlloc
-    new_FastAllocator (
-        wchar_t *   type
+    new_falloc (
+        wchar_t *   type,
+        int         size     // 0 -> variable length, else fixed length
 );
 
 void
-    free_FastAllocator (
+    delete_falloc (
         FastAlloc   fa
 );
 
@@ -30,5 +29,13 @@ void *
         FastAlloc   fa,
         int         size
 );
+
+void
+    ffree (
+        FastAlloc   fa,
+        void *      buf
+);
+
+
 
 #endif

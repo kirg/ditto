@@ -61,7 +61,7 @@ void
         void
 )
 {
-    fa_FilesizeBucket = new_FastAllocator( L"FilesizeBucket" );
+    fa_FilesizeBucket = new_falloc( L"FilesizeBucket" );
 }
 
 void
@@ -72,7 +72,7 @@ void
     free( hash.zerosize_bucket );
     free( hash.buckets );
 
-    free_FastAllocator( fa_FilesizeBucket );
+    free_falloc( fa_FilesizeBucket );
 }
 
 #define MIN_HASH_BUCKETS    (16)
@@ -117,8 +117,6 @@ wprintf(L"hash_init: num_files=%d, num_buckets=%d\n", num_files, hash.num_bucket
 }
 
 
-#define hash_dbg    //wprintf
-
 void
     hash_file (
         long long int   size,
@@ -144,41 +142,31 @@ void
 
     } else {
 
-hash_dbg(L"0");
         bucket = &hash.buckets[ size % hash.num_buckets ];
 
-hash_dbg(L"1");
         for ( fzbucket = (struct FilesizeBucket *)bucket->head.first;
                 (fzbucket != NULL) && (fzbucket->size != size);
                     fzbucket = (struct FilesizeBucket *)fzbucket->link.next );
 
-hash_dbg(L"2");
         if (fzbucket == NULL) {
 
-hash_dbg(L"3");
             //fzbucket = malloc( sizeof(struct FilesizeBucket) );
             fzbucket = new_FilesizeBucket( );
 
-hash_dbg(L"4");
             if (fzbucket == NULL) {
                 wprintf( L"malloc FilesizeBucket failed\n");
                 return;
             }
-hash_dbg(L"5");
 
             fzbucket->files.count   = 0;
             fzbucket->files.first   = NULL;
 
             fzbucket->size = size;
 
-hash_dbg(L"6");
             push( &bucket->head, &fzbucket->link );
-hash_dbg(L"7");
         }
 
-hash_dbg(L"8");
         add_list( &fzbucket->files, file );
-hash_dbg(L"9\n");
     }
 }
 

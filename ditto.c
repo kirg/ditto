@@ -27,32 +27,6 @@ FastAlloc fa_String;
 FastAlloc fa_File;
 FastAlloc fa_Directory;
 
-static inline
-wchar_t *
-    new_String (
-        int length
-)
-{
-    return falloc( fa_String, length * sizeof(wchar_t) );
-}
-
-static inline
-struct File *
-    new_File (
-        void
-)
-{
-    return falloc( fa_File, sizeof(struct File) );
-}
-
-static inline
-struct Directory *
-    new_Directory (
-        void
-)
-{
-    return falloc( fa_Directory, sizeof(struct Directory) );
-}
 
 /* passed into build_tree implicitly; globals to reduce stack context */
 wchar_t     build_tree_path[MAX_PATHNAME_LEN];
@@ -74,9 +48,9 @@ void
     list_init( );
     hashmap_init( );
 
-    fa_String       = new_FastAllocator( L"String" );
-    fa_File         = new_FastAllocator( L"File" );
-    fa_Directory    = new_FastAllocator( L"Directory" );
+    fa_String       = new_falloc( L"String", 0 );
+    fa_File         = new_falloc( L"File", sizeof(struct File) );
+    fa_Directory    = new_falloc( L"Directory", sizeof(struct Directory) );
 }
 
 void
@@ -84,9 +58,9 @@ void
         void
 )
 {
-    free_FastAllocator( fa_Directory );
-    free_FastAllocator( fa_File );
-    free_FastAllocator( fa_String );
+    delete_falloc( fa_Directory );
+    delete_falloc( fa_File );
+    delete_falloc( fa_String );
 
     hashmap_cleanup( );
     list_cleanup( );
@@ -102,9 +76,9 @@ void
     struct Directory *  dir;
     struct Link *       link;
 
-    path    = new_String( wcslen(pathW) + 1);
-    dir     = new_Directory( );
-    link    = new_Link( );
+    path    = falloc( fa_String, sizeof(wchar_t) * (wcslen(pathW) + 1) );
+    dir     = falloc( fa_Directory, sizeof(struct Directory) );
+    file    = falloc( fa_File, sizeof(struct File) );
 
     if (path && dir && link) {
         int i;
@@ -153,9 +127,9 @@ void
     struct Directory *  dir;
     struct Link *       link;
 
-    path    = new_String( strlen(pathA) + 1 );
-    dir     = new_Directory( );
-    link    = new_Link( );
+    path    = falloc( fa_String, sizeof(wchar_t) * (strlen(pathA) + 1) );
+    dir     = falloc( fa_Directory, sizeof(struct Directory) );
+    file    = falloc( fa_File, sizeof(struct File) );
 
     if (path && dir && link) {
         int i;
@@ -313,7 +287,7 @@ int
                     continue;
                 }
 
-                name = new_String( len + 1 );
+                name = falloc( fa_String, sizeof(wchar_t) * (len + 1) );
 
                 if (name == NULL) {
 
@@ -331,7 +305,7 @@ int
 
                     struct Directory *  dir;
 
-                    dir = new_Directory( );
+                    dir = falloc( fa_Directory, sizeof(struct Directory) );
 
                     if (dir != NULL) {
 
@@ -383,8 +357,7 @@ int
 
                     struct File *   file;
 
-                    //file = malloc( sizeof(struct File) );
-                    file = new_File( );
+                    file = falloc( fa_File, sizeof(struct File) );
 
                     if (file != NULL) {
 
