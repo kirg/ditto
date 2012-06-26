@@ -3,45 +3,138 @@
 
 #include "falloc.h"
 
-struct Head {
-    struct Link *   first;
+struct List {
+    struct Node *   head;
+    struct Node *   tail;
     int             count;
 };
 
-struct Link {
-    struct Link *   next;
+
+struct Node {
+    struct Node *   next;
     void *          data;
 };
 
-struct Link *
-    new_Link (
+
+struct Iterator {
+    struct Node *   next;
+};
+
+
+
+extern FastAlloc fa_List;
+
+struct Node *
+    new_Node (
         void
 );
 
-
-struct Head *
-    new_Head (
+struct List *
+    new_List (
         void
 );
+
+struct List *
+    new_List (
+        void
+);
+
 
 
 void
-    add_list (
-        struct Head *   list,
+    insert_list (
+        struct List *   list,
         void *          data
 );
+
+Node *
+    remove_list (
+        struct List *   list
+);
+
+void
+    insert_tail (
+        struct List *   list,
+        void *          data
+);
+
+
+
+static inline
+struct Iterator *
+    iterator (
+        struct List *   list
+)
+{
+    struct Iterator * iter = new_Iterator( );
+
+    if (iter != NULL) {
+        iter->next  = list->head;
+    }
+}
+
+
+Node *
+    get (
+        struct Iterator *   iter
+)
+{
+    Node * next;
+
+    if (iter != NULL) {
+        next        = iter->next;
+        iter->next  = next->next;
+    }
+}
+
+
 
 static inline
 void
     push (
-        struct Head *   list,
-        struct Link *   link
+        struct List *   list,
+        void *          data
 )
 {
-    link->next      = list->first;
-    list->first     = link;
+    struct Head * head = falloc( fa, sizeof(struct Head) );
 
-    ++list->count;
+    node = new_Node( );
+
+    if (!node) {
+
+        node->data  = data;
+
+        node->next  = list->head;
+
+        list->head  = node;
+        ++list->count;
+    }
+}
+
+static inline
+void *
+    pop (
+        struct List *   list
+)
+{
+    Node *  head;
+    void *  data = NULL;
+
+    head    = list->head;
+    data    = NULL;
+
+    if (head != NULL) {
+
+        data    = head->data;
+
+        list->head  = head->next;
+        --list->count;
+
+        ffree( head );
+    }
+
+    return data;
 }
 
 #endif
+

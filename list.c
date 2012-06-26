@@ -1,7 +1,7 @@
 #include "falloc.h"
 #include "list.h"
 
-FastAlloc   fa;
+FastAlloc   fa_List;
 
 void
     list_init (
@@ -9,9 +9,9 @@ void
 )
 {
     fa = new_falloc( L"List",
-            (sizeof(struct Head) > sizeof(struct Link)) ?
+            (sizeof(struct Head) > sizeof(struct Node)) ?
                 sizeof(struct Head) :
-                    sizeof(struct Link) );
+                    sizeof(struct Node) );
 }
 
 void
@@ -22,12 +22,12 @@ void
     delete_falloc( fa );
 }
 
-struct Link *
-    new_Link (
+struct Node *
+    new_Node (
         void
 )
 {
-    struct Link * link = falloc( fa, sizeof(struct Link) );
+    struct Node * link = falloc( fa, sizeof(struct Node) );
 
     if (link) {
         link->next = 0;
@@ -45,30 +45,11 @@ struct Head *
     struct Head * head = falloc( fa, sizeof(struct Head) );
 
     if (head) {
-        head->first = NULL;
+        head->head = NULL;
         head->count = 0;
     }
 
     return head;
-}
-
-
-void
-    add_list (
-        struct Head *   list,
-        void *          data
-)
-{
-    struct Link *   link;
-
-    link = new_Link( );
-
-    link->data      = data;
-
-    link->next      = list->first;
-    list->first     = link;
-
-    ++list->count;
 }
 
 

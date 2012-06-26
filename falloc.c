@@ -59,69 +59,77 @@ void *
 
         buf == NULL;
 
-    } else if (fac->free != NULL) {
-
-        buf = fac->free;
-        fac->free = *(void **)fac->free;
-
     } else {
 
-        do {
+        // FIXME: make size multiple of fac->size
 
-            if ((fac->next + size) < fac->end) {
+        if (fac->free != NULL) {
 
-                buf = fac->next;
+            buf = fac->free;
+            fac->free = *(void **)fac->free;
 
-                fac->next += size;
-                fac->total += size;
+        } else {
 
-                break;
+            do {
 
-            } else {
+                if ((fac->next + size) < fac->end) {
 
-                struct VirtAlloc *  v;
-                int                 valloc_size;
+                    buf = fac->next;
 
-                valloc_size = (fac->vallocs == NULL) ?
-                                    VIRTALLOC_MINSIZE :
-                                        fac->vallocs->size * VIRTALLOC_FACTOR;
+                    fac->next += size;
+                    fac->total += size;
 
-                if (valloc_size > VIRTALLOC_MAXSIZE) {
-                    valloc_size = VIRTALLOC_MAXSIZE;
-                }
+                    break;
 
-                v = malloc( sizeof(struct VirtAlloc) );
+                } else {
 
-                if (v) {
+                    struct VirtAlloc *  v;
+                    int                 valloc_size;
 
-                    v->address  = VirtualAlloc( NULL, valloc_size,
-                                        MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE );
+                    valloc_size = (fac->vallocs == NULL) ?
+                        VIRTALLOC_MINSIZE :
+                        fac->vallocs->size * VIRTALLOC_FACTOR;
 
-                    if (v->address) {
+                    if (valloc_size > VIRTALLOC_MAXSIZE) {
+                        valloc_size = VIRTALLOC_MAXSIZE;
+                    }
 
-                        v->next     = fac->vallocs;
-                        fac->vallocs = v;
+                    v = malloc( sizeof(struct VirtAlloc) );
 
-                        v->size     = valloc_size;
+                    if (v) {
 
-    wprintf(L"VirtualAlloc(%d bytes) for %s: %p\n", valloc_size, fac->type, v->address);
+                        v->address  = VirtualAlloc( NULL, valloc_size,
+                                MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE );
 
-                        fac->next   = v->address;
-                        fac->end    = (char *)v->address + v->size;
+                        if (v->address) {
 
-                    } else {
+                            v->next     = fac->vallocs;
+                            fac->vallocs = v;
 
-                        free(v);
+                            v->size     = valloc_size;
+
+                            wprintf(L"VirtualAlloc(%d bytes) for %s: %p\n", valloc_size, fac->type, v->address);
+
+                            fac->next   = v->address;
+                            fac->end    = (char *)v->address + v->size;
+
+                        } else {
+
+                            free(v);
+                        }
+
                     }
 
                 }
 
-            }
+            } while (1);
+        }
 
-        } while (1);
-    }
+        if (buf == NULL) {
+            wprintf(L"falloc returned NULL (type=%s)\n", fac->type);
+        }
 
-    return buf;
+        return buf;
 }
 
 #if 0

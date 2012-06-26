@@ -220,7 +220,7 @@ wprintf(L"hashing done\n");
 
     //find_dittos( );
 
-    dump_hash( );
+    //dump_hash( );
 }
 
 
@@ -441,6 +441,22 @@ void
 
     int    old_prefix_len;
 
+    if (dir == NULL) {
+
+        struct Link *       link;
+
+        for (link = scan_paths.first; link != NULL; link = link->next) {
+            struct Directory * dir;
+
+            dir = link->data;
+
+            print_tree( dir );
+
+        }
+
+        return;
+    }
+
     wprintf( L"%s%s [%d dirs, %d files, %d links]\n", prefix, dir->name, dir->n_dirs, dir->n_files, dir->n_misc );
 
     if (prefix_len == 0) {
@@ -512,6 +528,10 @@ void
 
     long long int   max = -1;
     wchar_t *       max_name = NULL;
+
+    if (bucket == NULL) {
+        bucket = &all_files;
+    }
 
     for (l = bucket->first; l != NULL; l = l->next) {
         struct File *   f;

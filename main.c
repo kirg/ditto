@@ -32,6 +32,17 @@ int
 
         scan( );
 
+        {
+            void
+                dump_hash (
+                    long long int min_size
+            );
+
+//          print_tree( NULL );
+//          list_files( NULL );
+            dump_hash( 0 );
+        }
+
         ditto_cleanup( );
 
     } else {

@@ -109,6 +109,8 @@ wprintf(L"hash_init: num_files=%d, num_buckets=%d\n", num_files, hash.num_bucket
 
 }
 
+long long int   max_filesize;
+void *          max_filesize_file;
 
 void
     hash_file (
@@ -119,7 +121,8 @@ void
     struct HashBucketHead * bucket;
     struct FilesizeBucket * fzbucket;
 
-/*
+
+#if 0
     {
         void print_full_filename( void * file );
 
@@ -127,7 +130,8 @@ void
         print_full_filename( file );
         wprintf( L"\n" );
     }
-*/
+#endif
+
 
     if (size == 0) {
 
@@ -155,16 +159,53 @@ void
 
             fzbucket->size = size;
 
-            push( &bucket->head, &fzbucket->link );
+            insert_list( &bucket->head, &fzbucket->link );
         }
 
         add_list( &fzbucket->files, file );
     }
+
+    if (size > max_filesize) {
+        max_filesize        = size;
+        max_filesize_file   = file;
+    }
+        
 }
+
+
+int max_bucket_count;
+struct FilesizeBucket * max_bucket_count_fzbucket;
+
+void
+    dump_fzbucket (
+        struct FilesizeBucket * fzbucket
+)
+{
+    struct Link * link;
+
+    void print_full_filename( void * file );
+
+    wprintf( L"####: %I64d bytes (count=%d)\n", fzbucket->size, fzbucket->files.count );
+
+    for (link = fzbucket->files.first; link != NULL; link = link->next) {
+
+        struct File *   file;
+
+        file = (struct File *)link->data;
+
+        wprintf( L"  ");
+        print_full_filename( file );
+        wprintf( L"\n" );
+
+    }
+
+    wprintf( L"\n" );
+}
+
 
 void
     dump_hash (
-        void
+        long long int min_size
 )
 {
     struct HashBucketHead * bucket;
@@ -180,28 +221,24 @@ void
                 (fzbucket != NULL);
                     fzbucket = (struct FilesizeBucket *)fzbucket->link.next ) {
 
-            struct Link * link;
+            if ((fzbucket->files.count > 1) && ((fzbucket->files.count * fzbucket->size) > min_size)) {
 
-            if ((fzbucket->files.count > 1) && ((fzbucket->files.count * fzbucket->size) > (16*1024*1024))) {
+                dump_fzbucket( fzbucket );
+            }
 
-                wprintf( L"####: %I64d bytes (count=%d)\n", fzbucket->size, fzbucket->files.count );
-
-                for (link = fzbucket->files.first; link != NULL; link = link->next) {
-
-                    struct File *   file;
-
-                    file = (struct File *)link->data;
-
-                    wprintf( L"  ");
-                    print_full_filename( file );
-                    wprintf( L"\n" );
-
-                }
-
-                wprintf( L"\n" );
+            if (fzbucket->files.count > max_bucket_count) {
+                max_bucket_count            = fzbucket->files.count;
+                max_bucket_count_fzbucket   = fzbucket;
             }
         }
     }
+
+    dump_fzbucket( hash.zerosize_bucket );
+
+
+    wprintf(L"======================\n");
+    wprintf(L"==== max bucket ====\n");
+    dump_fzbucket( max_bucket_count_fzbucket );
 }
 
 
