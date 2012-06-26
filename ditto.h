@@ -3,11 +3,23 @@
 
 #include <string.h>
 
-//void init( void );
+
+#ifdef _MSC_VER
+#   ifndef inline
+#       define inline  __inline
+#   endif
+#endif
+
+
+void ditto_init( void );
+
+void ditto_cleanup( void );
+
 
 void include_dir( wchar_t * path );
 
 void include_dirA( char * path );
+
 
 void scan( void );
 

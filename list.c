@@ -3,15 +3,17 @@
 
 FastAlloc   fa_List;
 
+#define MIN_OF(A, B) (((A) < (B)) ? (A) : (B))
+#define MAX_OF(A, B) (((A) > (B)) ? (A) : (B))
+
 void
     list_init (
         void
 )
 {
-    fa = new_falloc( L"List",
-            (sizeof(struct Head) > sizeof(struct Node)) ?
-                sizeof(struct Head) :
-                    sizeof(struct Node) );
+    fa_List = new_falloc( L"List",
+                    MAX_OF( MAX_OF( sizeof(struct List), sizeof(struct Node) ),
+                        sizeof(struct Iter) ) );
 }
 
 void
@@ -19,7 +21,24 @@ void
         void
 )
 {
-    delete_falloc( fa );
+    delete_falloc( fa_List );
+}
+
+
+struct List *
+    new_List (
+        void
+)
+{
+    struct List * list = falloc( fa_List, sizeof(struct List) );
+
+    if (list) {
+        list->head = NULL;
+        list->tail = NULL;
+        list->count = 0;
+    }
+
+    return list;
 }
 
 struct Node *
@@ -27,29 +46,37 @@ struct Node *
         void
 )
 {
-    struct Node * link = falloc( fa, sizeof(struct Node) );
+    struct Node * node = falloc( fa_List, sizeof(struct Node) );
 
-    if (link) {
-        link->next = 0;
-        link->data = NULL;
+    if (node) {
+        node->next = 0;
+        node->data = NULL;
     }
 
-    return link;
+    return node;
 }
 
-struct Head *
-    new_Head (
-        void
+void
+    delete_Node (
+        struct Node *   node
 )
 {
-    struct Head * head = falloc( fa, sizeof(struct Head) );
-
-    if (head) {
-        head->head = NULL;
-        head->count = 0;
-    }
-
-    return head;
+    ffree( fa_List, node );
 }
 
+void
+    delete_List (
+        struct List *   list
+)
+{
+    struct Node * node;
+    struct Node * next;
+
+    for (node = list->head; node != NULL; node = next) {
+        next = node->next;
+        ffree( fa_List, node );
+    }
+
+    ffree( fa_List, list );
+}
 

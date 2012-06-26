@@ -3,6 +3,14 @@
 
 #include <string.h>
 
+
+#ifdef _MSC_VER
+#   ifndef inline
+#       define inline  __inline
+#   endif
+#endif
+
+
 typedef void *  FastAlloc;
 
 void

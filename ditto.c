@@ -8,7 +8,12 @@
 // #include <winnt.h>
 // #include <ntdll.h>
 // #include <ntdef.h>
-#include <ddk/ntifs.h>
+
+#ifdef __GNUC__  
+#   include <ddk/ntifs.h>
+#else
+#   include <ntifs.h>
+#endif
 
 
 #define MAX_PATHNAME_LEN (32768)
@@ -20,12 +25,15 @@
 /* scratch variables */
 FILE_DIRECTORY_INFORMATION * fdi_buf;
 
-struct Head scan_paths;
-
-
 FastAlloc fa_String;
 FastAlloc fa_File;
 FastAlloc fa_Directory;
+
+struct List * scan_paths;
+
+struct List * all_files;
+struct List * all_dirs;
+struct List * all_misc;
 
 
 /* passed into build_tree implicitly; globals to reduce stack context */
@@ -33,10 +41,6 @@ wchar_t     build_tree_path[MAX_PATHNAME_LEN];
 int         build_tree_path_len;
 
 
-
-struct Head all_files;
-struct Head all_dirs;
-struct Head all_misc;
 
 
 void
@@ -51,6 +55,13 @@ void
     fa_String       = new_falloc( L"String", 0 );
     fa_File         = new_falloc( L"File", sizeof(struct File) );
     fa_Directory    = new_falloc( L"Directory", sizeof(struct Directory) );
+
+    scan_paths      = new_List( );
+
+    all_files       = new_List( );
+    all_dirs        = new_List( );
+    all_misc        = new_List( );
+
 }
 
 void
@@ -58,6 +69,12 @@ void
         void
 )
 {
+    delete_List( all_misc );
+    delete_List( all_dirs );
+    delete_List( all_files );
+
+    delete_List( scan_paths );
+
     delete_falloc( fa_Directory );
     delete_falloc( fa_File );
     delete_falloc( fa_String );
@@ -67,6 +84,7 @@ void
     falloc_cleanup( );
 }
 
+
 void
     include_dir (
         wchar_t *   pathW
@@ -74,73 +92,21 @@ void
 {
     wchar_t *           path;
     struct Directory *  dir;
-    struct Link *       link;
 
-    path    = falloc( fa_String, sizeof(wchar_t) * (wcslen(pathW) + 1) );
+    path    = falloc( fa_String,    sizeof(wchar_t) * (wcslen(pathW) + 2) );
     dir     = falloc( fa_Directory, sizeof(struct Directory) );
-    link    = falloc( fa_File, sizeof(struct Link) );
 
-    if (path && dir && link) {
+    if (path && dir) {
         int i;
-        int len;
 
         for (i = 0; pathW[i] != 0; ++i) {
             path[i] = pathW[i];
         }
 
-        len = i;
-
-        /* check and remove trailing '\' */
-        if (path[len-1] == L'\\') {
-            --len;
-        }
-
-        path[len] = 0;
-
-        dir->name       = path;
-        dir->parent     = NULL;
-        dir->sibling    = NULL;
-
-        dir->n_files    = 0;
-        dir->files      = NULL;
-
-        dir->n_dirs     = 0;
-        dir->dirs       = NULL;
-
-        dir->n_misc     = 0;
-        dir->misc       = NULL;
-
-        add_list( &scan_paths, dir );
-
-wprintf(L"include_dir: %s\n", dir->name);
-    } else {
-        wprintf(L"falloc path/dir/link failed\n");
-    }
-}
-
-void
-    include_dirA (
-        char *      pathA
-)
-{
-    wchar_t *           path;
-    struct Directory *  dir;
-    struct Link *       link;
-
-    path    = falloc( fa_String, sizeof(wchar_t) * (strlen(pathA) + 1) );
-    dir     = falloc( fa_Directory, sizeof(struct Directory) );
-    link    = falloc( fa_File, sizeof(struct Link) );
-
-    if (path && dir && link) {
-        int i;
-
-        for (i = 0; pathA[i] != 0; ++i) {
-            path[i] = pathA[i];
-        }
-
-        /* check and remove trailing '\' */
-        if (path[i-1] == L'\\') {
-            --i;
+        /* add trailing '\' */
+        if (path[i-1] != L'\\') {
+            path[i] = L'\\';
+            ++i;
         }
 
         path[i] = 0;
@@ -158,10 +124,60 @@ void
         dir->n_misc     = 0;
         dir->misc       = NULL;
 
-wprintf(L"include_dirA: %s\n", dir->name);
-        add_list( &scan_paths, dir );
+        queue( scan_paths, dir );
+
+wprintf(L"include_dir: %s\n", dir->name);
+
     } else {
-        wprintf(L"malloc path/dir/link failed\n");
+        wprintf(L"falloc path/dir failed\n");
+    }
+}
+
+void
+    include_dirA (
+        char *      pathA
+)
+{
+    wchar_t *           path;
+    struct Directory *  dir;
+
+    path    = falloc( fa_String,    sizeof(wchar_t) * (strlen(pathA) + 2) );
+    dir     = falloc( fa_Directory, sizeof(struct Directory) );
+
+    if (path && dir) {
+        int i;
+
+        for (i = 0; pathA[i] != 0; ++i) {
+            path[i] = pathA[i];
+        }
+
+        /* check and remove trailing '\' */
+        if (path[i-1] != L'\\') {
+            path[i] = L'\\';
+            ++i;
+        }
+
+        path[i] = 0;
+
+        dir->name       = path;
+        dir->parent     = NULL;
+        dir->sibling    = NULL;
+
+        dir->n_files    = 0;
+        dir->files      = NULL;
+
+        dir->n_dirs     = 0;
+        dir->dirs       = NULL;
+
+        dir->n_misc     = 0;
+        dir->misc       = NULL;
+
+        queue( scan_paths, dir );
+
+wprintf(L"include_dirA: %s\n", dir->name);
+
+    } else {
+        wprintf(L"malloc path/dir failed\n");
     }
 }
 
@@ -171,7 +187,8 @@ void
         void
 )
 {
-    struct Link *       link;
+    struct Iter *       iter;
+    struct Directory *  dir;
 
     fdi_buf = malloc( FILE_DIRECTORY_INFORMATION_BUFSIZE );
 
@@ -180,47 +197,47 @@ void
         return;
     }
 
-wprintf(L"scan\n");
+    iter = iterator( scan_paths );
 
-    for (link = scan_paths.first; link != NULL; link = link->next) {
-        struct Directory * dir;
+    for (dir = next( iter ); dir != NULL; dir = next( iter )) {
 
-        dir = link->data;
-
-wprintf(L"\nscan dir=\"%s\"\n", dir->name);
+wprintf(L"scanning \"%s\": ", dir->name);
 
         wcsncpy( build_tree_path, dir->name, MAX_PATHNAME_LEN );
         build_tree_path_len = wcslen( build_tree_path );
 
         build_tree( dir );
+wprintf(L"done\n", dir->name);
     }
 
-wprintf(L"tree: %d dirs, %d files, %d links\n", all_dirs.count, all_files.count, all_misc.count);
+    done( iter );
+
+wprintf(L"scan complete: %d dirs, %d files, %d links\n", count( all_dirs ), count( all_files ), count( all_misc ));
 
 //wprintf(L"enter to continue .."); getchar();
 
 
-    for (link = scan_paths.first; link != NULL; link = link->next) {
-        struct Directory * dir;
+    iter = iterator( scan_paths );
 
-        dir = link->data;
+    for (dir = next( iter ); dir != NULL; dir = next( iter )) {
 
         //print_tree( dir );
 
     }
 
+    done( iter );
+
+
 //wprintf(L"enter to continue .."); getchar();
-wprintf(L"files: %d files\n", all_files.count);
+wprintf(L"files: %d files\n", count( all_files ));
 
-    //list_files( &all_files );
+    //list_files( all_files );
 
-    hash_files( &all_files );
+    hash_files( all_files );
 
 wprintf(L"hashing done\n");
 
     //find_dittos( );
-
-    //dump_hash( );
 }
 
 
@@ -234,10 +251,6 @@ int
 /* 'build_tree_path' and 'build_tree_path_len' passed in as globals, to reduce stack context */
 
     HANDLE  hD;
-
-    /* add trailing '\' */
-    build_tree_path[build_tree_path_len]      = L'\\';
-    build_tree_path[++build_tree_path_len]    = 0;
 
 //wprintf( L"traverse: %s (%d)\n", build_tree_path, build_tree_path_len );
 
@@ -287,23 +300,25 @@ int
                     continue;
                 }
 
-                name = falloc( fa_String, sizeof(wchar_t) * (len + 1) );
-
-                if (name == NULL) {
-
-                    if (fdi->NextEntryOffset == 0) {
-                        break;
-                    }
-
-                    continue; // FIXME: break?
-                }
-
-                wcsncpy( name, fdi->FileName, len );
-                name[ len ] = 0;
-
                 if (fdi->FileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
 
                     struct Directory *  dir;
+
+                    name = falloc( fa_String, sizeof(wchar_t) * (len + 2) );
+
+                    if (name == NULL) {
+
+                        if (fdi->NextEntryOffset == 0) {
+                            break;
+                        }
+
+                        continue; // FIXME: break?
+                    }
+
+                    wcsncpy( name, fdi->FileName, len );
+
+                    name[ len ]     = L'\\'; /* add trailing '\' to directories */
+                    name[ len + 1 ] = 0;
 
                     dir = falloc( fa_Directory, sizeof(struct Directory) );
 
@@ -319,7 +334,7 @@ int
                         ++this->n_dirs;
 
                         /* add to all_dirs bucket */
-                        add_list( &all_dirs, dir );
+                        queue( all_dirs, dir );
 
                     } else {
                         wprintf( L"malloc( sizeof(struct Directory) ) failed\n");
@@ -329,6 +344,21 @@ int
                 } else if (fdi->FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) {
 
                     struct Misc *   misc;
+
+                    name = falloc( fa_String, sizeof(wchar_t) * (len + 1) );
+
+                    if (name == NULL) {
+
+                        if (fdi->NextEntryOffset == 0) {
+                            break;
+                        }
+
+                        continue; // FIXME: break?
+                    }
+
+                    wcsncpy( name, fdi->FileName, len );
+
+                    name[ len ] = 0;
 
                     misc = malloc( sizeof(struct Misc) );
 
@@ -345,10 +375,10 @@ int
                         ++this->n_misc;
 
                         /* add to all_misc bucket */
-                        add_list( &all_misc, misc );
+                        queue( all_misc, misc );
 
                     } else {
-                        wprintf( L"malloc( sizeof(struct Link) ) failed\n");
+                        wprintf( L"malloc( sizeof(struct Node) ) failed\n");
                         return -2;
                     }
 
@@ -356,6 +386,21 @@ int
                 } else {
 
                     struct File *   file;
+
+                    name = falloc( fa_String, sizeof(wchar_t) * (len + 1) );
+
+                    if (name == NULL) {
+
+                        if (fdi->NextEntryOffset == 0) {
+                            break;
+                        }
+
+                        continue; // FIXME: break?
+                    }
+
+                    wcsncpy( name, fdi->FileName, len );
+
+                    name[ len ] = 0;
 
                     file = falloc( fa_File, sizeof(struct File) );
 
@@ -371,7 +416,7 @@ int
                         ++this->n_files;
 
                         /* add to all_files bucket */
-                        add_list( &all_files, file );
+                        queue( all_files, file );
 
                         file->size = (long long int)fdi->EndOfFile.QuadPart;
 
@@ -421,6 +466,7 @@ int
 
     } else {
 //wprintf(L"error opening directory: %s\n", build_tree_path);
+        //FIXME: add to error list //
     }
 
     return 0;
@@ -443,16 +489,22 @@ void
 
     if (dir == NULL) {
 
-        struct Link *       link;
+        struct Iter *   iter;
+        struct Node *   node;
 
-        for (link = scan_paths.first; link != NULL; link = link->next) {
+        iter = iterator( scan_paths );
+
+        for ( node = next( iter ); node != NULL; node = next( iter )) {
+
             struct Directory * dir;
 
-            dir = link->data;
+            dir = node->data;
 
             print_tree( dir );
 
         }
+
+        done( iter );
 
         return;
     }
@@ -483,20 +535,20 @@ void
     wcscpy(prefix + prefix_len - 5, L"------");
 }
 
-struct Head *
+struct List *
     full_filename (
-        struct File *   f
+        struct File *   file
 )
 {
-    struct Head *       list;
+    struct List *       list;
     struct Directory *  p;
 
-    list = new_Head( );
+    list = new_List( );
 
-    add_list( list, f->name );
+    push( list, file->name );
 
-    for (p = f->parent; p != NULL; p = p->parent) {
-        add_list( list, p->name );
+    for (p = file->parent; p != NULL; p = p->parent) {
+        push( list, p->name );
     }
 
     return list;
@@ -504,39 +556,40 @@ struct Head *
 
 void
     print_full_filename (
-        struct File *   f
+        struct File *   file
 )
 {
-    struct Link *   name;
+    struct Iter *   iter;
+    wchar_t *       name;
 
-    for ( name = full_filename( f )->first; name != NULL; name = name->next ) {
-        wprintf( L"%s", name->data );
+    iter = iterator( full_filename( file ) );
 
-        if (name->next != NULL) {
-            wprintf( L"\\" );
-        }
+    for (name = next( iter ); name != NULL; name = next( iter )) {
+        wprintf( L"%s", name );
     }
+
+    done( iter );
 }
 
 
 void
     list_files (
-        struct Head *   bucket
+        struct List *   bucket
 )
 {
-    struct Link *   l;
+    struct Iter *   iter;
+    struct File *   f;
 
     long long int   max = -1;
     wchar_t *       max_name = NULL;
 
     if (bucket == NULL) {
-        bucket = &all_files;
+        bucket = all_files;
     }
 
-    for (l = bucket->first; l != NULL; l = l->next) {
-        struct File *   f;
+    iter = iterator( bucket );
 
-        f = (struct File *)l->data;
+    for (f = next( iter ); f != NULL; f = next( iter )) {
 
         wprintf( L"%20I64d bytes: ", f->size );
         print_full_filename( f );
@@ -548,22 +601,29 @@ void
         }
     }
 
+    done( iter );
+
     wprintf( L"max filesize: %I64d (%s)\n", max, max_name );
 }
 
 void
     hash_files (
-        struct Head *   bucket
+        struct List *   bucket
 )
 {
-    struct Link *   l;
+    struct Iter *   iter;
+    struct File *   f;
 
-    hash_init( all_files.count, 0, 0 );
+    hash_init( count( all_files ), 0, 0 );
 
-    for (l = all_files.first; l != NULL; l = l->next) {
+    iter = iterator( bucket );
+    
+    for (f = next( iter ); f != NULL; f = next( iter )) {
 
-        hash_file( ((struct File *)l->data)->size, l->data );
+        hash_file( f->size, f );
     }
+
+    done( iter );
 }
 
 

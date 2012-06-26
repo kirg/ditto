@@ -3,6 +3,17 @@
 
 #include "falloc.h"
 
+#include <stdio.h>
+
+
+#ifdef _MSC_VER
+#   ifndef inline
+#       define inline  __inline
+#   endif
+#endif
+
+
+
 struct List {
     struct Node *   head;
     struct Node *   tail;
@@ -16,75 +27,179 @@ struct Node {
 };
 
 
-struct Iterator {
-    struct Node *   next;
+struct Iter {
+    struct Node *   current;
 };
 
 
 
 extern FastAlloc fa_List;
 
+struct List *
+    new_List (
+        void
+);
+
 struct Node *
     new_Node (
         void
 );
 
-struct List *
-    new_List (
-        void
+void
+    delete_Node (
+        struct Node *   node
 );
 
-struct List *
-    new_List (
-        void
+void
+    delete_List (
+        struct List *   list
 );
 
 
 
 void
-    insert_list (
+    insert_node (
         struct List *   list,
-        void *          data
+        struct Node *   data
 );
 
-Node *
-    remove_list (
+struct Node *
+    remove_node (
         struct List *   list
 );
 
 void
-    insert_tail (
+    insert_node_tail (
         struct List *   list,
-        void *          data
+        struct Node *   node
 );
+
+
+static inline
+int
+    count (
+        struct List *   list
+)
+{
+    return list->count;
+}
+
 
 
 
 static inline
-struct Iterator *
+struct Iter *
     iterator (
         struct List *   list
 )
 {
-    struct Iterator * iter = new_Iterator( );
+    struct Iter * iter = falloc( fa_List, sizeof(struct Iter) );
 
     if (iter != NULL) {
-        iter->next  = list->head;
+        iter->current   = list->head;
+    }
+}
+
+static inline
+void *
+    next (
+        struct Iter *   iter
+)
+{
+    void *  data;
+
+    if (iter != NULL && iter->current != NULL) {
+        data            = iter->current->data;
+        iter->current   = iter->current->next;
+    } else {
+        data = NULL;
+    }
+
+    return data;
+}
+
+static inline
+int
+    has_next (
+        struct Iter *   iter
+)
+{
+    return (iter != NULL) && (iter->current != NULL);
+}
+
+
+static inline
+void *
+    done (
+        struct Iter *   iter
+)
+{
+    if (iter != NULL) {
+        ffree( fa_List, iter );
     }
 }
 
 
-Node *
-    get (
-        struct Iterator *   iter
+
+static inline
+void
+    queue (
+        struct List *   list,
+        void *          data
 )
 {
-    Node * next;
+    struct Node * node;
 
-    if (iter != NULL) {
-        next        = iter->next;
-        iter->next  = next->next;
+    node = falloc( fa_List, sizeof(struct Node) );
+
+
+    if (node != NULL) {
+
+        node->data  = data;
+        node->next  = NULL;
+
+        if (list->tail != NULL) {
+            list->tail->next  = node;
+        } else {
+            list->head = node;
+        }
+
+        list->tail = node;
+
+        ++list->count;
     }
+}
+
+static inline
+void *
+    dequeue (
+        struct List *   list
+)
+{
+    void *  data;
+
+    data = NULL;
+
+    if (list->head != NULL) {
+
+        struct Node *  node;
+
+        data        = list->head->data;
+
+        node        = list->head;
+        list->head  = list->head->next;
+
+        if (list->tail == node) {
+            list->tail = NULL;
+        }
+
+        ffree( fa_List, node );
+
+        --list->count;
+
+    }
+
+    return data;
 }
 
 
@@ -96,18 +211,22 @@ void
         void *          data
 )
 {
-    struct Head * head = falloc( fa, sizeof(struct Head) );
+    struct Node * node;
 
-    node = new_Node( );
+    node = falloc( fa_List, sizeof(struct Node) );
 
-    if (!node) {
+    if (node != NULL) {
 
         node->data  = data;
 
         node->next  = list->head;
-
         list->head  = node;
+
         ++list->count;
+
+        if (list->tail == NULL) {
+            list->tail = node;
+        }
     }
 }
 
@@ -117,24 +236,9 @@ void *
         struct List *   list
 )
 {
-    Node *  head;
-    void *  data = NULL;
-
-    head    = list->head;
-    data    = NULL;
-
-    if (head != NULL) {
-
-        data    = head->data;
-
-        list->head  = head->next;
-        --list->count;
-
-        ffree( head );
-    }
-
-    return data;
+    return dequeue( list );
 }
+
 
 #endif
 

@@ -1,6 +1,7 @@
 #include "list.h"
 
 #include <malloc.h>
+#include <stdio.h>
 
 /*
 
@@ -21,27 +22,27 @@ bucket[0]   bucket[1]   bucket[2] ..
 */
 
 struct FilesizeBucket {
-    struct Link     link;
-
     long long int   size;
-    struct Head     files; /* list of File */
+    struct List *   files; /* list of Files */
 };
 
+#if 0
 struct HashBucketHead {
-    struct Head     head; /* list of FilesizeBucket */
+    struct List     fzbuckets; /* list of FilesizeBucket */
 };
+#endif
 
 struct Hash {
 
-    int                 num_buckets;
+    int                     num_buckets;
 
     struct FilesizeBucket * zerosize_bucket;
 
     /* hashed by size % num_hash_buckets */
-    struct HashBucketHead * buckets;        /* array */
+    struct List *           buckets;        /* array of <list of FilesizeBucket> */
 
     /* hashed by size / num_size_buckets */
-    struct HashBucketHead * buckets_bysize;   /* array */
+    struct List *           buckets_bysize;   /* array of <list of FilesizeBucket> */
 };
 
 
@@ -49,6 +50,7 @@ struct Hash hash;
 
 
 FastAlloc fa_FilesizeBucket;
+FastAlloc fa_HashBucketHead;
 
 void
     hashmap_init (
@@ -56,6 +58,7 @@ void
 )
 {
     fa_FilesizeBucket = new_falloc( L"FilesizeBucket", sizeof(struct FilesizeBucket) );
+    fa_HashBucketHead = new_falloc( L"HashBucketHead", sizeof(struct List) );
 }
 
 void
@@ -63,8 +66,7 @@ void
         void
 )
 {
-    free( hash.buckets );
-
+    delete_falloc( fa_HashBucketHead );
     delete_falloc( fa_FilesizeBucket );
 }
 
@@ -85,7 +87,7 @@ void
 
 wprintf(L"hash_init: num_files=%d, num_buckets=%d\n", num_files, hash.num_buckets);
 
-    hash.buckets = malloc( hash.num_buckets * sizeof(struct HashBucketHead) );
+    hash.buckets = falloc( fa_HashBucketHead, hash.num_buckets * sizeof(struct List) );
 
     hash.zerosize_bucket = falloc( fa_FilesizeBucket, sizeof(struct FilesizeBucket) );
 
@@ -93,14 +95,13 @@ wprintf(L"hash_init: num_files=%d, num_buckets=%d\n", num_files, hash.num_bucket
         int i;
 
         for ( i = 0; i <= hash.num_buckets; ++i) {
-            hash.buckets[ i ].head.count  = 0;
-            hash.buckets[ i ].head.first  = NULL;
+            hash.buckets[ i ].head  = NULL;
+            hash.buckets[ i ].tail  = NULL;
+            hash.buckets[ i ].count = 0;
         }
 
         hash.zerosize_bucket->size  = 0;
-
-        hash.zerosize_bucket->files.count   = 0;
-        hash.zerosize_bucket->files.first   = NULL;
+        hash.zerosize_bucket->files = new_List( );
 
     } else {
         wprintf( L"malloc hash.buckets or hash.zerosize_bucket failed\n" );
@@ -118,11 +119,11 @@ void
         void *          file
 )
 {
-    struct HashBucketHead * bucket;
+    struct List *           bucket;
     struct FilesizeBucket * fzbucket;
 
 
-#if 0
+#if dbg
     {
         void print_full_filename( void * file );
 
@@ -135,15 +136,21 @@ void
 
     if (size == 0) {
 
-        add_list( &hash.zerosize_bucket->files, file );
+        queue( hash.zerosize_bucket->files, file );
 
     } else {
 
+        struct Iter *   iter;
+
         bucket = &hash.buckets[ size % hash.num_buckets ];
 
-        for ( fzbucket = (struct FilesizeBucket *)bucket->head.first;
+        iter = iterator( bucket );
+
+        for ( fzbucket = next( iter );
                 (fzbucket != NULL) && (fzbucket->size != size);
-                    fzbucket = (struct FilesizeBucket *)fzbucket->link.next );
+                    fzbucket = next( iter) );
+
+        done( iter );
 
         if (fzbucket == NULL) {
 
@@ -154,15 +161,13 @@ void
                 return;
             }
 
-            fzbucket->files.count   = 0;
-            fzbucket->files.first   = NULL;
+            fzbucket->size  = size;
+            fzbucket->files = new_List( );
 
-            fzbucket->size = size;
-
-            insert_list( &bucket->head, &fzbucket->link );
+            queue( bucket, fzbucket );
         }
 
-        add_list( &fzbucket->files, file );
+        queue( fzbucket->files, file );
     }
 
     if (size > max_filesize) {
@@ -181,23 +186,24 @@ void
         struct FilesizeBucket * fzbucket
 )
 {
-    struct Link * link;
+    struct Iter *   iter;
+    struct File *   file;
 
     void print_full_filename( void * file );
 
-    wprintf( L"####: %I64d bytes (count=%d)\n", fzbucket->size, fzbucket->files.count );
+    wprintf( L"####: %I64d bytes (count=%d)\n", fzbucket->size, count( fzbucket->files) );
 
-    for (link = fzbucket->files.first; link != NULL; link = link->next) {
+    iter = iterator( fzbucket->files );
 
-        struct File *   file;
-
-        file = (struct File *)link->data;
+    for (file = next( iter ); file != NULL; file = next( iter )) {
 
         wprintf( L"  ");
         print_full_filename( file );
         wprintf( L"\n" );
 
     }
+
+    done( iter );
 
     wprintf( L"\n" );
 }
@@ -208,7 +214,6 @@ void
         long long int min_size
 )
 {
-    struct HashBucketHead * bucket;
     struct FilesizeBucket * fzbucket;
 
     void print_full_filename( void * file );
@@ -216,40 +221,50 @@ void
     int i;
 
     for (i = 0; i < hash.num_buckets; ++i) {
+
+        struct Iter *   iter;
+
+        iter = iterator( &hash.buckets[ i ] );
         
-        for ( fzbucket = (struct FilesizeBucket *)hash.buckets[ i ].head.first;
+        for ( fzbucket = next( iter );
                 (fzbucket != NULL);
-                    fzbucket = (struct FilesizeBucket *)fzbucket->link.next ) {
+                    fzbucket = next( iter ) ) {
 
-            if ((fzbucket->files.count > 1) && ((fzbucket->files.count * fzbucket->size) > min_size)) {
+//            if ((count( fzbucket->files ) > 1) &&
+//                    ((count( fzbucket->files ) * fzbucket->size) > min_size)) {
 
-                dump_fzbucket( fzbucket );
-            }
+//              dump_fzbucket( fzbucket );
+//            }
 
-            if (fzbucket->files.count > max_bucket_count) {
-                max_bucket_count            = fzbucket->files.count;
+            if (count( fzbucket->files ) > max_bucket_count) {
+                max_bucket_count            = count( fzbucket->files );
                 max_bucket_count_fzbucket   = fzbucket;
             }
         }
+
+        done( iter );
     }
+
 
     dump_fzbucket( hash.zerosize_bucket );
 
 
-    wprintf(L"======================\n");
-    wprintf(L"==== max bucket ====\n");
-    dump_fzbucket( max_bucket_count_fzbucket );
+    if (max_bucket_count_fzbucket != NULL) {
+        wprintf(L"======================\n");
+        wprintf(L"==== max bucket ====\n");
+        dump_fzbucket( max_bucket_count_fzbucket );
+    }
 }
 
 
 struct DittoDir {
 
-    struct Head     dirs;
+    struct List     dirs;
 };
 
 struct DittoFile {
 
-    struct Head     files;
+    struct List     files;
 };
 
 
@@ -268,7 +283,7 @@ void
         File *  file;
     };
 
-    struct Link * link;
+    struct Node * node;
 
     int num = fzbucket->files.count;
 
@@ -288,11 +303,11 @@ void
     }
 
 
-    for (link = fzbucket->files.first; link != NULL; link = link->next) {
+    for (node = fzbucket->files.first; node != NULL; node = node->next) {
 
         struct File *   file;
 
-        file = (struct File *)link->data;
+        file = (struct File *)node->data;
 
         wprintf( L"  "); print_full_filename( file ); wprintf( L"\n" );
 
@@ -317,17 +332,17 @@ void
         
         for ( fzbucket = (struct FilesizeBucket *)hash.buckets[ i ].head.first;
                 (fzbucket != NULL);
-                    fzbucket = (struct FilesizeBucket *)fzbucket->link.next ) {
+                    fzbucket = (struct FilesizeBucket *)fzbucket->node.next ) {
 
-            struct Link * link;
+            struct Node * node;
 
             if (fzbucket->files.count > 1) {
 
-                for (link = fzbucket->files.first; link != NULL; link = link->next) {
+                for (node = fzbucket->files.first; node != NULL; node = node->next) {
 
                     struct File *   file;
 
-                    file = (struct File *)link->data;
+                    file = (struct File *)node->data;
 
                     wprintf( L"  "); print_full_filename( file ); wprintf( L"\n" );
 

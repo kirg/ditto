@@ -2,6 +2,8 @@
 
 #include <stdio.h>
 
+#include "ditto.h"
+
 #ifdef __GNUC__  
 int
     main (
@@ -38,9 +40,11 @@ int
                     long long int min_size
             );
 
-//          print_tree( NULL );
-//          list_files( NULL );
-            dump_hash( 0 );
+#if 1 //dbg
+          //print_tree( NULL );
+          //list_files( NULL );
+          dump_hash( 0 );
+#endif
         }
 
         ditto_cleanup( );

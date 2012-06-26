@@ -6,6 +6,13 @@
 #include "list.h"
 
 
+#ifdef _MSC_VER
+#   ifndef inline
+#       define inline  __inline
+#   endif
+#endif
+
+
 struct File {
 
     struct File *       next;   /* next in bucket */
@@ -61,12 +68,12 @@ void
 
 void
     list_files (
-        struct Head *   bucket
+        struct List *   bucket
 );
 
 void
     hash_files (
-        struct Head *   bucket
+        struct List *   bucket
 );
 
 #endif
