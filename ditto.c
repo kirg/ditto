@@ -197,6 +197,7 @@ void
 {
     struct Iter *       iter;
     struct Directory *  dir;
+int t0; /* clock */
 
     fdi_buf = malloc( FILE_DIRECTORY_INFORMATION_BUFSIZE );
 
@@ -209,15 +210,14 @@ void
 
     for (dir = next( iter ); dir != NULL; dir = next( iter )) {
 
-int t0;
-wprintf(L"scanning %s: ", dir->name);
+wprintf(L"scanning %s:\n", dir->name);
 t0=clock();
 
         wcsncpy( build_tree_path, dir->name, MAX_PATHNAME_LEN );
         build_tree_path_len = wcslen( build_tree_path );
 
         build_tree( dir );
-wprintf(L"done (%d ticks)\n", clock()-t0);
+wprintf(L"\rdone (%d ticks)                                                    \n", clock()-t0);
     }
 
     done( iter );
@@ -237,14 +237,19 @@ wprintf(L"scan complete: %d dirs, %d files, %d links\n", count( all_dirs ), coun
     done( iter );
 
 
-//wprintf(L"enter to continue .."); getchar();
+wprintf(L"enter to sort files by size .."); getchar();
 wprintf(L"files: %d files\n", count( all_files ));
 
     list_files( all_files );
 
-    hash_files( all_files );
 
-    wprintf(L"hashing done\n");
+wprintf(L"enter to hash files .."); getchar();
+    hash_init( count( all_files ), 0, 0 );
+
+wprintf(L"hashing files: ");
+t0=clock();
+    hash_files( all_files );
+wprintf(L"done (%d ticks)\n", clock()-t0);
 
     //find_dittos( );
 }
@@ -264,6 +269,7 @@ int
     //struct List *   path;
 
 //wprintf( L"traverse: %s (%d)\n", build_tree_path, build_tree_path_len );
+wprintf(L"\r%d dirs, %d files", count( all_dirs ), count( all_files ));
 
     this->n_files   = 0;
     this->files     = NULL;
@@ -682,7 +688,7 @@ void
     struct Iter *   iter;
     struct File *   f;
 
-    hash_init( count( all_files ), 0, 0 );
+//  hash_init( count( all_files ), 0, 0 );
 
     iter = iterator( bucket );
     
@@ -695,6 +701,7 @@ void
 }
 
 
+#if 0
 #define START_OFFSET    (256*1024)
 
 void
@@ -746,4 +753,5 @@ void
     }
 
 }
+#endif
 
