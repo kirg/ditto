@@ -87,20 +87,25 @@ void
 void
     print_list (
         struct List *   list,
-        print_func      print
+        print_func      print,
+        int             num
 )
 {
     struct Node *   node;
+    int i;
 
-    wprintf(L"list: count=%d, head=%p, tail=%p\n", list->count, list->head, list->tail);
 
-    for (node = list->head; node != NULL; node = node->next) {
-        //wprintf(L"node: ptr=%p, next=%p, value=", node, node->next);
-        print(node->data);
-        wprintf(L"\n");
+    if (num == 0) {
+        for (node = list->head; node != NULL; node = node->next) {
+            print(node->data);
+        }
+    } else {
+        for (node = list->head, i = 0;
+                node != NULL && i < num;
+                    node = node->next, ++i) {
+            print(node->data);
+        }
     }
-
-    wprintf(L"\n");
 }
 
 
@@ -118,6 +123,8 @@ struct List *
         struct Node * iter;
 
         int i;
+
+//wprintf(L"merge_sort: %p (%d)\n", list, list->count);
 
         for (i = 1, iter = list->head; i < list->count/2; ++i) {
             iter =  iter->next;
@@ -141,10 +148,12 @@ struct List *
 
             iter->next = NULL;
 
+//wprintf(L"merge_sort LEFT\n");
             left_list = merge_sort(left_list, compare);
-
+//wprintf(L"merge_sort RIGHT\n");
             right_list = merge_sort(right_list, compare);
 
+//wprintf(L"merge_sort MERGE\n");
             left    = left_list->head;
             right   = right_list->head;
 
@@ -156,27 +165,31 @@ struct List *
                 right       = right->next;
             }
 
-            for( node = list->head; left != NULL || right != NULL; node = node->next ) {
+            for( iter = list->head; left != NULL || right != NULL; iter = iter->next ) {
+
+//wprintf(L"iter=%p,left=%p,right=%p\n", iter,left, right);
 
                 if (left != NULL && (right == NULL || (compare( left->data, right->data )) <= 0)) {
 
-                    node->next  = left;
+                    iter->next  = left;
                     left        = left->next;
 
                 } else {
 
-                    node->next  = right;
+                    iter->next  = right;
                     right       = right->next;
                 }
-
-                node = node->next;
-
             }
 
-            list->tail = node;
+//wprintf(L"merge_sort MERGE DONE\n");
 
-            ffree( right_list );
-            ffree( left_list );
+            list->tail = iter;
+
+
+            ffree( fa_List, right_list );
+            ffree( fa_List, left_list );
+
+//wprintf(L"merge_sort done: %p (%d)\n", list, list->count);
 
         } else {
 wprintf(L"falloc left_list/right_list failed\n");

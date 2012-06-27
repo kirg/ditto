@@ -6,6 +6,7 @@
 
 #include <stdio.h>
 #include <windows.h>
+#include <time.h>
 
 // #include <windef.h>
 // #include <winnt.h>
@@ -42,8 +43,6 @@ struct List * all_misc;
 /* passed into build_tree implicitly; globals to reduce stack context */
 wchar_t     build_tree_path[MAX_PATHNAME_LEN];
 int         build_tree_path_len;
-
-
 
 
 void
@@ -118,6 +117,9 @@ void
         dir->parent     = NULL;
         dir->sibling    = NULL;
 
+        dir->path       = new_List( );
+        queue( dir->path, dir->name);
+
         dir->n_files    = 0;
         dir->files      = NULL;
 
@@ -166,6 +168,9 @@ void
         dir->parent     = NULL;
         dir->sibling    = NULL;
 
+        dir->path       = new_List( );
+        queue( dir->path, dir->name);
+
         dir->n_files    = 0;
         dir->files      = NULL;
 
@@ -204,19 +209,20 @@ void
 
     for (dir = next( iter ); dir != NULL; dir = next( iter )) {
 
-wprintf(L"scanning \"%s\": ", dir->name);
+int t0;
+wprintf(L"scanning %s: ", dir->name);
+t0=clock();
 
         wcsncpy( build_tree_path, dir->name, MAX_PATHNAME_LEN );
         build_tree_path_len = wcslen( build_tree_path );
 
         build_tree( dir );
-wprintf(L"done\n", dir->name);
+wprintf(L"done (%d ticks)\n", clock()-t0);
     }
 
     done( iter );
 
 wprintf(L"scan complete: %d dirs, %d files, %d links\n", count( all_dirs ), count( all_files ), count( all_misc ));
-
 //wprintf(L"enter to continue .."); getchar();
 
 
@@ -236,9 +242,9 @@ wprintf(L"files: %d files\n", count( all_files ));
 
     list_files( all_files );
 
-    //hash_files( all_files );
+    hash_files( all_files );
 
-//wprintf(L"hashing done\n");
+    wprintf(L"hashing done\n");
 
     //find_dittos( );
 }
@@ -333,11 +339,13 @@ int
                     if (dir != NULL) {
 
                         dir->name       = name;
+                        dir->path       = clone( this->path );
+                        queue( dir->path, dir->name );
+
                         dir->parent     = this;
 
                         /* add to child-dir list */
                         dir->sibling    = this->dirs;
-
                         this->dirs      = dir;
                         ++this->n_dirs;
 
@@ -374,11 +382,13 @@ int
                     if (misc != NULL) {
 
                         misc->name      = name;
+                        misc->path      = clone( this->path );
+                        queue( misc->path, misc->name );
+
                         misc->parent    = this;
 
                         /* add to child-misc list */
                         misc->sibling   = this->misc;
-
                         this->misc      = misc;
                         ++this->n_misc;
 
@@ -415,11 +425,13 @@ int
                     if (file != NULL) {
 
                         file->name      = name;
+                        file->path      = clone( this->path );
+                        queue( file->path, file->name );
+
                         file->parent    = this;
 
                         /* add to child-files list */
                         file->sibling   = this->files;
-
                         this->files     = file;
                         ++this->n_files;
 
@@ -595,12 +607,22 @@ int
 }
 
 void
+    print_String (
+        void * data
+)
+{
+    wprintf(L"%s", data);
+}
+
+void
     print_File (
         void * data
 )
 {
     struct File * file = data;
-    wprintf( L"%20I64d : %s", file->size, file->name);
+    wprintf( L"%20I64d : ", file->size);
+    print_list( file->path, print_String, 100 );
+    wprintf( L"\n" );
 }
 
 void
@@ -608,23 +630,27 @@ void
         struct List *   bucket
 )
 {
+    int t0;
+    struct List *   clist;
     //struct Iter *   iter;
     //struct File *   f;
 
-    long long int   max = -1;
-    wchar_t *       max_name = NULL;
+    // long long int   max = -1;
+    // wchar_t *       max_name = NULL;
 
     if (bucket == NULL) {
         bucket = all_files;
     }
 
-// wprintf(L"before\n");
-// print_list(bucket, print_File);
+wprintf(L"clone and sort: ");
+t0=clock();
 
-merge_sort(bucket, compare_File, print_File);
+clist = clone( bucket );
+merge_sort(clist, compare_File);
+wprintf(L"done (%d ticks)\n", clock()-t0);
+delete_List(clist);
 
-wprintf(L"after\n");
-print_list(bucket, print_File);
+print_list(clist, print_File, 1000);
 
 /*
     iter = iterator( bucket );
@@ -642,9 +668,10 @@ print_list(bucket, print_File);
     }
 
     done( iter );
-*/
 
     wprintf( L"max filesize: %I64d (%s)\n", max, max_name );
+*/
+
 }
 
 void
@@ -667,4 +694,56 @@ void
     done( iter );
 }
 
+
+#define START_OFFSET    (256*1024)
+
+void
+    dittoer (
+        long long int   size,
+        struct List *   file_list
+)
+{
+    struct FileContext {
+        HANDLE  hF;
+        char *  buf;
+        int     len;
+
+        File *  file;
+    };
+
+    struct Node * node;
+
+    int num = file_list->count;
+
+    struct FileContext *    fc = malloc( num * sizeof(struct FileContext) );
+
+    long long int   size = fzbucket->size;
+    long long int   offs = START_OFFSET;
+
+    if (offs > size) {
+        offs = 0;
+    }
+
+    for (i = 0; i < num; ++i) {
+        files[i].hF     = CreateFile(..);
+        files[i].len    = BUF_SIZE;
+        files[i].buf    = falloc( BUF_SIZE );
+
+        SetFilePointerEx( offs );
+        ReadFile( hF, BUF_SIZE );
+    }
+
+
+    for (node = fzbucket->files.first; node != NULL; node = node->next) {
+
+        struct File *   file;
+
+        file = (struct File *)node->data;
+
+        wprintf( L"  "); print_full_filename( file ); wprintf( L"\n" );
+
+
+    }
+
+}
 

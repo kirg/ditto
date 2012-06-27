@@ -18,9 +18,9 @@ struct File {
     struct File *       next;   /* next in bucket */
 
     wchar_t *           name;
+    struct List *       path;   /* path string-list (debug) */
     struct Directory *  parent;
     struct File *       sibling;
-    struct List *       path;   /* debug */
 
     long long int       size;
 };
@@ -30,6 +30,7 @@ struct Misc {
     struct Misc *       next;   /* next in bucket */
 
     wchar_t *           name;
+    struct List *       path;   /* path string-list (debug) */
     struct Directory *  parent;
     struct Misc *       sibling;
 };
@@ -40,9 +41,9 @@ struct Directory {
     struct Directory *  next;   /* next in bucket */
 
     wchar_t *           name;
+    struct List *       path;   /* path string-list (debug) */
     struct Directory *  parent;
     struct Directory *  sibling;
-    struct List *       path;   /* debug */
 
     int                 n_files;
     struct File *       files;

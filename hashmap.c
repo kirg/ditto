@@ -247,7 +247,7 @@ void
     }
 
 
-    dump_fzbucket( hash.zerosize_bucket );
+    //dump_fzbucket( hash.zerosize_bucket );
 
 
     if (max_bucket_count_fzbucket != NULL) {
@@ -271,52 +271,6 @@ struct DittoFile {
 
 
 #if 0
-void
-    dittoing (
-        struct FilesizeBucket * fzbucket
-)
-{
-    struct FileContext {
-        HANDLE  hF;
-        char *  buf;
-        int     len;
-
-        File *  file;
-    };
-
-    struct Node * node;
-
-    int num = fzbucket->files.count;
-
-    struct FileContext * files = malloc( num * sizeof(struct FileContext) );
-
-    long long int   size = fzbucket->size;
-    long long int   offs = START_OFFSET;
-
-
-    for (i = 0; i < num; ++i) {
-        files[i].hF = CreateFile(..);
-        files[i].len = BUF_SIZE;
-        files[i].buf = falloc( BUF_SIZE );
-
-        SetFilePointerEx( offs );
-        ReadFile( hF, BUF_SIZE );
-    }
-
-
-    for (node = fzbucket->files.first; node != NULL; node = node->next) {
-
-        struct File *   file;
-
-        file = (struct File *)node->data;
-
-        wprintf( L"  "); print_full_filename( file ); wprintf( L"\n" );
-
-
-    }
-
-}
-
 void
     find_dittofiles (
         void
