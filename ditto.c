@@ -1,6 +1,9 @@
 #include "ditto.h"
 #include "ditto_.h"
 
+#include "list.h"
+#include "hashmap.h"
+
 #include <stdio.h>
 #include <windows.h>
 
@@ -231,11 +234,11 @@ wprintf(L"scan complete: %d dirs, %d files, %d links\n", count( all_dirs ), coun
 //wprintf(L"enter to continue .."); getchar();
 wprintf(L"files: %d files\n", count( all_files ));
 
-    //list_files( all_files );
+    list_files( all_files );
 
-    hash_files( all_files );
+    //hash_files( all_files );
 
-wprintf(L"hashing done\n");
+//wprintf(L"hashing done\n");
 
     //find_dittos( );
 }
@@ -252,6 +255,8 @@ int
 
     HANDLE  hD;
 
+    struct List *   path;
+
 //wprintf( L"traverse: %s (%d)\n", build_tree_path, build_tree_path_len );
 
     this->n_files   = 0;
@@ -266,8 +271,11 @@ int
 
     /* using pre-setup 'build_tree_path' and 'build_tree_path_len' globals */
 
-    hD = CreateFile( build_tree_path, FILE_LIST_DIRECTORY, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                        NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT | FILE_CREATE_TREE_CONNECTION, NULL );
+    hD = CreateFile( build_tree_path, FILE_LIST_DIRECTORY,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                NULL, OPEN_EXISTING,
+                    FILE_ATTRIBUTE_NORMAL | FILE_FLAG_BACKUP_SEMANTICS |
+                        FILE_FLAG_OPEN_REPARSE_POINT | FILE_CREATE_TREE_CONNECTION, NULL );
 
     if (hD != INVALID_HANDLE_VALUE) {
 
@@ -485,8 +493,6 @@ void
     struct Misc *       m;
     struct Directory *  d;
 
-    int    old_prefix_len;
-
     if (dir == NULL) {
 
         struct Iter *   iter;
@@ -571,6 +577,34 @@ void
     done( iter );
 }
 
+int
+    compare_File (
+        void *  l_data,
+        void *  r_data
+)
+{
+    int ret;
+    struct File *   left = l_data;
+    struct File *   right = r_data;
+
+    wprintf(L"COMPARE!\n");
+    wprintf(L"COMPARE!\n");
+
+    ret = (left->size < right->size) ? -1 : (left->size == right->size) ? 0 : 1;
+
+    wprintf(L"COMPARE: %I64d, %I64d = %d\n", left->size, right->size, ret);
+
+    return ret;
+}
+
+void
+    print_File (
+        void * data
+)
+{
+    struct File *   file = data;
+    wprintf( L"%20I64d : %s", file->size, file->name);
+}
 
 void
     list_files (
@@ -587,6 +621,9 @@ void
         bucket = all_files;
     }
 
+    merge_sort(all_files, compare_File, print_File);
+
+/*
     iter = iterator( bucket );
 
     for (f = next( iter ); f != NULL; f = next( iter )) {
@@ -602,6 +639,7 @@ void
     }
 
     done( iter );
+*/
 
     wprintf( L"max filesize: %I64d (%s)\n", max, max_name );
 }

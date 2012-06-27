@@ -12,7 +12,15 @@
 #   endif
 #endif
 
+void
+    list_init (
+        void
+);
 
+void
+    list_cleanup (
+        void
+);
 
 struct List {
     struct Node *   head;
@@ -98,6 +106,8 @@ struct Iter *
     if (iter != NULL) {
         iter->current   = list->head;
     }
+
+    return iter;
 }
 
 static inline
@@ -129,7 +139,7 @@ int
 
 
 static inline
-void *
+void
     done (
         struct Iter *   iter
 )
@@ -239,6 +249,81 @@ void *
     return dequeue( list );
 }
 
+
+static inline
+struct List *
+    clone (
+        struct List *   list
+)
+{
+    struct List * clone_list;
+
+    clone_list = falloc( fa_List, sizeof(struct List) );
+
+    if (clone_list) {
+
+        clone_list->count = list->count;
+
+        if (clone_list->count > 0) {
+            struct Node *  l;
+            struct Node *  c;
+            struct Node *  tail;
+
+            c = falloc( fa_List, sizeof(struct Node) );
+
+            if (c) {
+
+                l       = list->head;
+                c->data = l->data;
+
+                clone_list->head = c;
+                tail = c;
+
+                for (l = l->next; l != NULL; l = l->next) {
+
+                    c = falloc( fa_List, sizeof(struct Node) );
+
+                    if (c) {
+                        c->data = l->data;
+                        c->next = NULL;
+
+                        tail->next  = c;
+                        tail        = c;
+                    } else {
+                        /* free up buffers; check for failure outside */
+                        clone_list = NULL; /* temp hack; will crash below */
+                        break;
+                    }
+                }
+
+                clone_list->tail = tail;
+
+            } else {
+                /* FIXME: free up all allocated buffers */
+                clone_list = NULL;
+            }
+
+        } else {
+            clone_list->head = NULL;
+            clone_list->tail = NULL;
+        }
+    }
+
+    return clone_list;
+}
+
+
+typedef int (* compare_func)(void * left, void * right);
+
+typedef void (* print_func)(void * value);
+
+struct List *
+    merge_sort (
+        struct List *   list,
+        compare_func    compare,
+        print_func      print
+        
+);
 
 #endif
 

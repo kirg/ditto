@@ -1,4 +1,5 @@
 #include "list.h"
+#include "hashmap.h"
 
 #include <malloc.h>
 #include <stdio.h>

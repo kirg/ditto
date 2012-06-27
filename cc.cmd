@@ -1,1 +1,1 @@
-gcc -o d.exe -mconsole -DUNICODE *.c -lntdll
+gcc -o d.exe -mconsole -Wall -DUNICODE *.c -lntdll

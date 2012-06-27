@@ -20,7 +20,7 @@ struct File {
     wchar_t *           name;
     struct Directory *  parent;
     struct File *       sibling;
-
+    struct List *       path;   /* debug */
 
     long long int       size;
 };
@@ -42,7 +42,8 @@ struct Directory {
     wchar_t *           name;
     struct Directory *  parent;
     struct Directory *  sibling;
-    
+    struct List *       path;   /* debug */
+
     int                 n_files;
     struct File *       files;
 
