@@ -142,15 +142,20 @@ wprintf(L"list-count <= 1\n");
         struct Node *   right;
         struct Node *   node;
 
-        mid->next       = NULL;
-
         left_list->head     = list->head;
         left_list->tail     = mid;
-        left_list->count    = (list->count + 1)/2;
+        left_list->count    = i;
 
         right_list->head    = mid->next;
         right_list->tail    = list->tail;
-        right_list->count   = (list->count - 1)/2;
+        right_list->count   = list->count - i;
+
+        mid->next = NULL;
+
+//wprintf(L"left list"); print_list(left_list, print);
+//getchar();
+//wprintf(L"right list"); print_list(right_list, print);
+//getchar();
 
 wprintf(L"LEFT\n");
         left_list   = merge_sort(left_list, compare, print);
