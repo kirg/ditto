@@ -587,11 +587,9 @@ int
     struct File *   left = l_data;
     struct File *   right = r_data;
 
-    wprintf(L"COMPARE!\n");
-
     ret = (left->size < right->size) ? -1 : (left->size == right->size) ? 0 : 1;
 
-    wprintf(L"COMPARE: %I64d, %I64d = %d\n", left->size, right->size, ret);
+//wprintf(L"COMPARE: %I64d, %I64d = %d\n", left->size, right->size, ret);
 
     return ret;
 }
@@ -620,7 +618,13 @@ void
         bucket = all_files;
     }
 
-    merge_sort(bucket, compare_File, print_File);
+// wprintf(L"before\n");
+// print_list(bucket, print_File);
+
+merge_sort(bucket, compare_File, print_File);
+
+wprintf(L"after\n");
+print_list(bucket, print_File);
 
 /*
     iter = iterator( bucket );

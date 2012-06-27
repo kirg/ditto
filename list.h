@@ -325,5 +325,12 @@ struct List *
         
 );
 
+
+void
+    print_list (
+        struct List *   list,
+        print_func      print
+);
+
 #endif
 
