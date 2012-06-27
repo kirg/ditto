@@ -83,6 +83,27 @@ void
     ffree( fa_List, list );
 }
 
+
+void
+    print_list (
+        struct List *   list,
+        print_func      print
+)
+{
+    struct Node *   node;
+
+    wprintf(L"list: count=%d, head=%p, tail=%p\n", list->count, list->head, list->tail);
+
+    for (node = list->head; node != NULL; node = node->next) {
+        wprintf(L"node: ptr=%p, next=%p, value=", node, node->next);
+        print(node->data);
+        wprintf(L"\n");
+    }
+
+    wprintf(L"\n");
+}
+
+
 struct List *
     merge_sort (
         struct List *   list,
@@ -98,40 +119,29 @@ struct List *
 
     int i;
 
-{
-    struct Node *   node;
-    wprintf(L"PRE sort list: count=%d, head=%p, tail=%p\n", list->count, list->head, list->tail);
+wprintf( L"PRE-SORT ");
+print_list( list, print );
 
-    for (node = list->head; node != NULL; node = node->next) {
-        wprintf(L"node: ptr=%p, next=%p, value=", node, node->next);
-        print(node->data);
-        wprintf(L"\n");
-    }
-
-    wprintf(L"\n");
-}
+compare(list->head->data, list->tail->data);
 
     if (list->count <= 1) {
-wprintf(L"0");
+wprintf(L"list-count <= 1\n");
         return list;
     }
 
-    for (i = 0, mid = list->head; i < list->count/2; ++i) {
-wprintf(L"1");
+    for (i = 1, mid = list->head; i < list->count/2; ++i) {
         mid =  mid->next;
     }
 
     left_list   = falloc( fa_List, sizeof(struct List) );
     right_list  = falloc( fa_List, sizeof(struct List) );
 
-wprintf(L"2");
     if (left_list && right_list) {
 
         struct Node *   left;
         struct Node *   right;
         struct Node *   node;
 
-wprintf(L"3");
         mid->next       = NULL;
 
         left_list->head     = list->head;
@@ -142,13 +152,13 @@ wprintf(L"3");
         right_list->tail    = list->tail;
         right_list->count   = (list->count - 1)/2;
 
-wprintf(L" LEFT ");
+wprintf(L"LEFT\n");
         left_list   = merge_sort(left_list, compare, print);
 
-wprintf(L" RIGHT ");
+wprintf(L"RIGHT\n");
         right_list  = merge_sort(right_list, compare, print);
 
-wprintf(L" DONE ");
+wprintf(L"DONE\n");
         left    = left_list->head;
         right   = right_list->head;
 
@@ -187,18 +197,12 @@ wprintf(L"6");
         /* list->count remains unchanged */
 
 wprintf(L"7\n");
-{
-    struct Node *   node;
-    wprintf(L"PRE sort list: count=%d, head=%p, tail=%p\n", list->count, list->head, list->tail);
 
-    for (node = list->head; node != NULL; node = node->next) {
-        wprintf(L"node: ptr=%p, next=%p, value=", node, node->next);
-        print(node->data);
-        wprintf(L"\n");
-    }
+wprintf( L"POST-SORT ");
+print_list( list, print );
 
-    wprintf(L"\n");
-}
+    } else {
+wprintf(L"falloc left_list/right_list failed\n");
     }
 
     return list;

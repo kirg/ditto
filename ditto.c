@@ -255,7 +255,7 @@ int
 
     HANDLE  hD;
 
-    struct List *   path;
+    //struct List *   path;
 
 //wprintf( L"traverse: %s (%d)\n", build_tree_path, build_tree_path_len );
 
@@ -588,7 +588,6 @@ int
     struct File *   right = r_data;
 
     wprintf(L"COMPARE!\n");
-    wprintf(L"COMPARE!\n");
 
     ret = (left->size < right->size) ? -1 : (left->size == right->size) ? 0 : 1;
 
@@ -602,7 +601,7 @@ void
         void * data
 )
 {
-    struct File *   file = data;
+    struct File * file = data;
     wprintf( L"%20I64d : %s", file->size, file->name);
 }
 
@@ -611,8 +610,8 @@ void
         struct List *   bucket
 )
 {
-    struct Iter *   iter;
-    struct File *   f;
+    //struct Iter *   iter;
+    //struct File *   f;
 
     long long int   max = -1;
     wchar_t *       max_name = NULL;
@@ -621,7 +620,7 @@ void
         bucket = all_files;
     }
 
-    merge_sort(all_files, compare_File, print_File);
+    merge_sort(bucket, compare_File, print_File);
 
 /*
     iter = iterator( bucket );
