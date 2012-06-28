@@ -23,4 +23,10 @@ void include_dirA( char * path );
 
 void scan( void );
 
+void
+    print_File (
+        void *  file
+);
+
+
 #endif

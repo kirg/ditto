@@ -43,7 +43,7 @@ int
 #if 1 //dbg
           //print_tree( NULL );
           //list_files( NULL );
-          dump_hash( 0 );
+          //dump_hash( 0 );
 #endif
         }
 

@@ -30,5 +30,10 @@ void
         long long int min_size
 );
 
+void
+    hash_stats (
+        void
+);
+
 #endif
 

@@ -251,8 +251,30 @@ t0=clock();
     hash_files( all_files );
 wprintf(L"done (%d ticks)\n", clock()-t0);
 
+    wprintf(L"\n");
+    hash_stats( );
     //find_dittos( );
 }
+
+
+void
+    print_String (
+        void * data
+)
+{
+    wprintf(L"%s", data);
+}
+
+void
+    print_StringList (
+        void *  data,
+        int     max
+)
+{
+    print_list( data, print_String, max );
+}
+
+
 
 
 int
@@ -269,7 +291,9 @@ int
     //struct List *   path;
 
 //wprintf( L"traverse: %s (%d)\n", build_tree_path, build_tree_path_len );
-wprintf(L"\r%d dirs, %d files (%s)                                  ", count( all_dirs ), count( all_files ), this->name);
+wprintf(L"\r%d dirs, %d files ", count( all_dirs ), count( all_files ) );
+print_StringList( this->path, 256 );
+wprintf(L"     ");
 
     this->n_files   = 0;
     this->files     = NULL;
@@ -596,21 +620,13 @@ void
 }
 
 void
-    print_String (
-        void * data
-)
-{
-    wprintf(L"%s", data);
-}
-
-void
     print_File (
         void * data
 )
 {
     struct File * file = data;
     wprintf( L"%20I64d : ", file->size);
-    print_list( file->path, print_String, 100 );
+    print_StringList( file->path, 256 );
     wprintf( L"\n" );
 }
 
@@ -646,7 +662,7 @@ void
     wprintf(L"done (%d ticks)\n", clock()-t0);
     delete_List(copy);
 
-    print_list(copy, print_File, 1000);
+    print_list(copy, print_File, 50);
 }
 
 void

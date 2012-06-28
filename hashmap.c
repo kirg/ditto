@@ -1,5 +1,6 @@
 #include "list.h"
 #include "hashmap.h"
+#include "ditto.h"
 
 #include <malloc.h>
 #include <stdio.h>
@@ -255,6 +256,122 @@ void
         wprintf(L"==== max bucket ====\n");
         dump_fzbucket( max_bucket_count_fzbucket );
     }
+}
+
+
+int
+    compare_FilesizeBucket_by_count (
+        struct FilesizeBucket * left,
+        struct FilesizeBucket * right
+)
+{
+    return (left->files->count > right->files->count) ? -1 :
+                (left->files->count == right->files->count) ? 0 : 1;
+}
+
+int
+    compare_FilesizeBucket_by_filesize (
+        struct FilesizeBucket * left,
+        struct FilesizeBucket * right
+)
+{
+    return (left->size > right->size) ? -1 :
+                (left->size == right->size) ? 0 : 1;
+}
+
+int
+    compare_FilesizeBucket_by_totalsize (
+        struct FilesizeBucket * left,
+        struct FilesizeBucket * right
+)
+{
+    return ((left->size * left->files->count) > (right->size * right->files->count)) ? -1 :
+                ((left->size * left->files->count) == (right->size * right->files->count)) ? 0 : 1;
+}
+
+void
+    print_FilesizeBucket (
+        struct FilesizeBucket * fz
+)
+{
+    wprintf( L"%8d files -> %8I64d bytes\n", fz->files->count, fz->size );
+    print_list( fz->files, print_File, 5 );
+}
+
+
+void
+    hash_stats (
+        void
+)
+{
+    struct List * twoplus;
+    struct List * twoplus_by_count;
+    struct List * twoplus_by_filesize;
+    struct List * twoplus_by_totalsize;
+
+    int num;
+
+    int i;
+
+    twoplus = new_List( );
+
+    num = 1; /* 1 -> zerosize_bucket */
+
+    if (count( hash.zerosize_bucket->files ) > 1) {
+        push( twoplus, hash.zerosize_bucket );
+    }
+
+    for (i = 0; i < hash.num_buckets; ++i) {
+
+        struct FilesizeBucket * fzbucket;
+        struct Iter *           iter;
+
+        iter = iterator( &hash.buckets[ i ] );
+        
+        for ( fzbucket = next( iter );
+                (fzbucket != NULL);
+                    fzbucket = next( iter ) ) {
+
+            ++num;
+
+            if (count( fzbucket->files ) > 1) {
+                push( twoplus, fzbucket );
+            }
+        }
+
+        done( iter );
+    }
+
+    twoplus_by_count = clone( twoplus );
+    merge_sort( twoplus_by_count, (compare_func)compare_FilesizeBucket_by_count );
+    
+    twoplus_by_filesize = clone( twoplus );
+    merge_sort( twoplus_by_filesize, (compare_func)compare_FilesizeBucket_by_filesize );
+
+    twoplus_by_totalsize = clone( twoplus );
+    merge_sort( twoplus_by_totalsize, (compare_func)compare_FilesizeBucket_by_totalsize );
+
+    wprintf( L"filesize buckets:        %d\n", num );
+    wprintf( L"2-plus filesize buckets: %d\n", twoplus->count );
+
+    wprintf( L"0-byte filesize bucket:  %d files\n", hash.zerosize_bucket->files->count );
+    wprintf( L"2-plus filesize buckets:   %d\n", twoplus->count );
+
+    wprintf( L"\ntop 50 buckets by count:\n" );
+    print_list( twoplus_by_count, (print_func)print_FilesizeBucket, 50 );
+
+    wprintf( L"\ntop 25 (2-plus) buckets by filesize:\n" );
+    print_list( twoplus_by_filesize, (print_func)print_FilesizeBucket, 25 );
+
+    wprintf( L"\ntop 25 (2-plus) buckets by total size:\n" );
+    print_list( twoplus_by_totalsize, (print_func)print_FilesizeBucket, 25 );
+
+    wprintf( L"\n" );
+
+    delete_List( twoplus_by_totalsize );
+    delete_List( twoplus_by_filesize );
+    delete_List( twoplus_by_count );
+    delete_List( twoplus );
 }
 
 
