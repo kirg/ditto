@@ -196,6 +196,8 @@ void
 
     fac = (struct FastAllocatorContext *)fa;
 
+wprintf( L"delete_Falloc %s %d\n", fac->type, fac->total );
+
     for ( va = fac->vallocs; va != NULL; va = next ) {
 
         if (!VirtualFree( va->address, 0 /* va->size */, MEM_RELEASE )) {

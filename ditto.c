@@ -269,7 +269,7 @@ int
     //struct List *   path;
 
 //wprintf( L"traverse: %s (%d)\n", build_tree_path, build_tree_path_len );
-wprintf(L"\r%d dirs, %d files", count( all_dirs ), count( all_files ));
+wprintf(L"\r%d dirs, %d files (%s)                                  ", count( all_dirs ), count( all_files ), this->name);
 
     this->n_files   = 0;
     this->files     = NULL;
@@ -595,23 +595,6 @@ void
     done( iter );
 }
 
-int
-    compare_File (
-        void *  l_data,
-        void *  r_data
-)
-{
-    int ret;
-    struct File *   left = l_data;
-    struct File *   right = r_data;
-
-    ret = (left->size < right->size) ? -1 : (left->size == right->size) ? 0 : 1;
-
-//wprintf(L"COMPARE: %I64d, %I64d = %d\n", left->size, right->size, ret);
-
-    return ret;
-}
-
 void
     print_String (
         void * data
@@ -631,13 +614,46 @@ void
     wprintf( L"\n" );
 }
 
+int
+    compare_File_by_size (
+        struct File *   left,
+        struct File *   right
+)
+{
+    return (left->size < right->size) ? -1 : (left->size == right->size) ? 0 : 1;
+}
+
+void
+    sort_files_by_size (
+        struct List *   bucket
+)
+{
+    int t0;
+    struct List *   copy;
+
+
+    if (bucket == NULL) {
+        bucket = all_files;
+    }
+
+    wprintf(L"clone and sort: ");
+    t0=clock();
+
+    copy = clone( bucket );
+
+    merge_sort(copy, (compare_func) compare_File_by_size);
+
+    wprintf(L"done (%d ticks)\n", clock()-t0);
+    delete_List(copy);
+
+    print_list(copy, print_File, 1000);
+}
+
 void
     list_files (
         struct List *   bucket
 )
 {
-    int t0;
-    struct List *   clist;
     //struct Iter *   iter;
     //struct File *   f;
 
@@ -648,15 +664,7 @@ void
         bucket = all_files;
     }
 
-wprintf(L"clone and sort: ");
-t0=clock();
-
-clist = clone( bucket );
-merge_sort(clist, compare_File);
-wprintf(L"done (%d ticks)\n", clock()-t0);
-delete_List(clist);
-
-print_list(clist, print_File, 1000);
+    sort_files_by_size( bucket );
 
 /*
     iter = iterator( bucket );
