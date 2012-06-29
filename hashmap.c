@@ -348,9 +348,27 @@ void
     twoplus_by_filesize = clone( twoplus );
     merge_sort( twoplus_by_filesize, (compare_func)compare_FilesizeBucket_by_filesize );
 
+    {
+        struct FilesizeBucket * fzbucket;
+        struct Iter *           iter;
+
+        iter = iterator( twoplus_by_filesize );
+        
+        for ( fzbucket = next( iter );
+                (fzbucket != NULL);
+                    fzbucket = next( iter ) ) {
+
+            if (count( fzbucket->files ) > 1) {
+                dittoer( fzbucket->size, fzbucket->files );
+            }
+        }
+
+        done( iter );
+    }
+
     twoplus_by_totalsize = clone( twoplus );
     merge_sort( twoplus_by_totalsize, (compare_func)compare_FilesizeBucket_by_totalsize );
-
+/*
     wprintf( L"filesize buckets:        %d\n", num );
     wprintf( L"2-plus filesize buckets: %d\n", twoplus->count );
 
@@ -367,14 +385,26 @@ void
     print_list( twoplus_by_totalsize, (print_func)print_FilesizeBucket, 25 );
 
     wprintf( L"\n" );
-
+*/
     delete_List( twoplus_by_totalsize );
     delete_List( twoplus_by_filesize );
     delete_List( twoplus_by_count );
     delete_List( twoplus );
+
+/*
+
+    {
+        void
+            find_dittofiles (
+                void
+        );
+        find_dittofiles( );
+    }
+*/
 }
 
 
+/*
 struct DittoDir {
 
     struct List     dirs;
@@ -384,52 +414,34 @@ struct DittoFile {
 
     struct List     files;
 };
+*/
 
 
 
-#if 0
 void
     find_dittofiles (
         void
 )
 {
-    struct HashBucketHead * bucket;
-    struct FilesizeBucket * fzbucket;
-
-    void print_full_filename( void * file );
-
     int i;
 
     for (i = 0; i < hash.num_buckets; ++i) {
+
+        struct FilesizeBucket * fzbucket;
+        struct Iter *           iter;
+
+        iter = iterator( &hash.buckets[ i ] );
         
-        for ( fzbucket = (struct FilesizeBucket *)hash.buckets[ i ].head.first;
+        for ( fzbucket = next( iter );
                 (fzbucket != NULL);
-                    fzbucket = (struct FilesizeBucket *)fzbucket->node.next ) {
+                    fzbucket = next( iter ) ) {
 
-            struct Node * node;
-
-            if (fzbucket->files.count > 1) {
-
-                for (node = fzbucket->files.first; node != NULL; node = node->next) {
-
-                    struct File *   file;
-
-                    file = (struct File *)node->data;
-
-                    wprintf( L"  "); print_full_filename( file ); wprintf( L"\n" );
-
-
-                }
-
-                wprintf( L"\n" );
-
-            } else {
-
-                /* FIXME: free up fzbuckets with just one file (implies unique file) */
+            if (count( fzbucket->files ) > 1) {
+                dittoer( fzbucket->size, fzbucket->files );
             }
         }
+
+        done( iter );
     }
 }
-
-#endif
 

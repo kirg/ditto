@@ -292,8 +292,8 @@ int
 
 //wprintf( L"traverse: %s (%d)\n", build_tree_path, build_tree_path_len );
 wprintf(L"\r%d dirs, %d files ", count( all_dirs ), count( all_files ) );
-print_StringList( this->path, 256 );
-wprintf(L"     ");
+//print_StringList( this->path, 256 );
+//wprintf(L"     ");
 
     this->n_files   = 0;
     this->files     = NULL;
@@ -584,7 +584,7 @@ void
 }
 
 struct List *
-    full_filename (
+    full_filename_list (
         struct File *   file
 )
 {
@@ -602,6 +602,52 @@ struct List *
     return list;
 }
 
+wchar_t *
+    full_filename (
+        struct File * file
+)
+{
+    struct List *       list;
+    struct Directory *  p;
+    wchar_t *           name;
+    int                 len;
+
+    list = new_List( );
+
+    push( list, file->name );
+    len = wcslen(file->name);
+
+    for (p = file->parent; p != NULL; p = p->parent) {
+        push( list, p->name );
+        len += wcslen(p->name);
+    }
+
+    name = falloc( fa_String, sizeof(wchar_t) * (len + 1) );
+
+    if (name) {
+        struct Iter *   iter;
+        wchar_t *       component;
+        int             end;
+
+        end = 0;
+
+        iter = iterator( list );
+
+        for (component = next( iter ); component != NULL; component = next( iter )) {
+            wcsncpy( name+end, component, len-end );
+            end += wcslen( component );
+        }
+
+        name[end] = 0;
+
+        done( iter );
+        
+    }
+
+    return name;
+}
+
+
 void
     print_full_filename (
         struct File *   file
@@ -610,7 +656,7 @@ void
     struct Iter *   iter;
     wchar_t *       name;
 
-    iter = iterator( full_filename( file ) );
+    iter = iterator( full_filename_list( file ) );
 
     for (name = next( iter ); name != NULL; name = next( iter )) {
         wprintf( L"%s", name );
@@ -725,8 +771,82 @@ void
 }
 
 
-#if 0
+int
+    find_checksum (
+        void *  buf,
+        int     len
+)
+{
+    int i;
+    int c0;
+    int c1;
+
+    c0 = 1;
+    c0 = 0;
+
+    len /= sizeof(int); /* ignore last 'len % sizeof(int)' bytes */
+
+    for (i = 0; i < len; ++i) {
+        c0 += ((int *)buf)[i];
+        c1 += c0;
+    }
+
+    return c1;
+}
+
+int
+    bufcmp (
+        char *  buf,
+        char *  buf0,
+        int     len
+)
+{
+    int i;
+
+    for (i = 0; (i < len) && (buf[i] == buf0[i]); ++i);
+
+    return i;
+}
+
+
+/*
+struct Range {
+    long long int   offset;
+    long long int   size;
+};
+*/
+
+
+/*
+struct FileContext {
+    HANDLE      hF;
+    wchar_t *   name;
+    File *      file;
+};
+*/
+
+
+struct PreDittoFile {
+    struct PreDittoFile *   next;
+
+
+    int             checksum;
+    int             diff_at; /* same checksum, different at bufoffs */
+
+    long long int   size;
+
+    long long int   offs;
+    char *          buf;
+    int             len;
+
+    struct List *   files;
+
+};
+
 #define START_OFFSET    (256*1024)
+#define BUF_SIZE        (256*1024)
+
+#define dbg //wprintf
 
 void
     dittoer (
@@ -734,48 +854,233 @@ void
         struct List *   file_list
 )
 {
-    struct FileContext {
-        HANDLE  hF;
-        char *  buf;
-        int     len;
+    struct Iter *   iter;
+    struct File *   file;
 
-        File *  file;
-    };
-
-    struct Node * node;
-
-    int num = file_list->count;
-
-    struct FileContext *    fc = malloc( num * sizeof(struct FileContext) );
-
-    long long int   size = fzbucket->size;
     long long int   offs = START_OFFSET;
+    LARGE_INTEGER   li_offs;
+
+    struct PreDittoFile *   predit_list;
 
     if (offs > size) {
         offs = 0;
     }
 
-    for (i = 0; i < num; ++i) {
-        files[i].hF     = CreateFile(..);
-        files[i].len    = BUF_SIZE;
-        files[i].buf    = falloc( BUF_SIZE );
+    predit_list = NULL;
 
-        SetFilePointerEx( offs );
-        ReadFile( hF, BUF_SIZE );
+
+
+    li_offs.QuadPart = offs;
+
+    iter = iterator( file_list ); 
+
+    for (file = next( iter ); file != NULL; file = next( iter )) {
+
+        char *          buf;
+        int             len;
+
+        int             checksum;
+        int             diff_at;
+        int             diff_at2;
+
+        HANDLE          hF;
+        DWORD           bytes_read;
+        wchar_t *       name;
+
+        name = full_filename( file ); /* FIXME: free name buffer */
+
+dbg( L"CreateFile( %s )\n", name );
+
+        hF = CreateFile( name, GENERIC_READ,
+                        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                        NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL );
+
+        buf = malloc( BUF_SIZE );
+        len = BUF_SIZE;
+
+        if ((hF != INVALID_HANDLE_VALUE) && (buf != NULL) && 
+                SetFilePointerEx( hF, li_offs, NULL, FILE_BEGIN ) &&
+                    ReadFile( hF, buf, BUF_SIZE, &bytes_read, NULL )) {
+
+            struct PreDittoFile *   predit;
+            struct PreDittoFile *   prev;
+
+
+dbg( L"seek to offset: %I64d, read %d bytes (requested %d bytes)\n", offs, bytes_read, BUF_SIZE );
+
+            len = bytes_read;
+
+            checksum = find_checksum( buf, len );
+
+dbg( L"checksum(buf=%p, len=%d) = %d\n", buf, len, checksum );
+
+            for (prev = NULL, predit = predit_list;
+                    (predit != NULL) && (checksum > predit->checksum);
+                        prev = predit, predit = predit->next);
+
+            if ((predit != NULL) && (checksum == predit->checksum)) {
+
+dbg( L"matching checksum found; comparing buffers\n" );
+
+                diff_at = bufcmp( buf, predit->buf, len );
+
+dbg( L"diff_at=%d\n", diff_at );
+
+                if (diff_at == len) {
+
+dbg( L"complete match\n" );
+                    /* buffers match byte to byte */
+                    queue( predit->files, file );
+                    free(buf); /* don't need the buffer any more */ /* FIXME: optimize to just re-use for next file */
+
+                } else {
+
+wprintf( L"mismatched at diff_at=%d\n", diff_at );
+
+                    diff_at2 = 0;
+
+                    for (prev = predit, predit = predit->next;
+                            predit != NULL && (checksum == predit->checksum) && (diff_at <= predit->diff_at);
+                                prev = predit, predit = predit->next) {
+
+dbg(L"predit=%p, predit->checksum=%d, predit->diff_at=%d\n", predit, predit->checksum, predit->diff_at);
+
+                        if (diff_at == predit->diff_at) {
+
+dbg( L"matching checksum and diff_at; comparing buffers\n");
+
+                            diff_at2 = bufcmp( buf+diff_at, predit->buf+diff_at, len-diff_at );
+
+dbg( L"diff_at2=%d\n", diff_at2);
+
+                            if (diff_at2 == len) {
+dbg( L"diff_at2 matched!\n", diff_at2);
+                                queue( predit->files, file );
+                                free(buf); /* FIXME: optimize */
+                                break;
+                            }
+                        }
+dbg( L"next predit\n");
+
+                    }
+
+                    if (diff_at2 != len) {
+
+dbg( L"no matching checksum+diff_at+diff_at2\n");
+
+                        predit = malloc( sizeof(struct PreDittoFile) );
+
+                        if (predit == NULL) {
+                            wprintf(L"malloc predit failed!\n");
+                            return;
+                        }
+
+                        predit->checksum    = checksum;
+                        predit->diff_at     = diff_at;
+
+                        predit->size        = size;
+                        predit->offs        = offs;
+
+                        predit->buf         = buf;
+                        predit->len         = len; /* == BUF_SIZE */
+
+                        predit->files       = new_List( );
+
+                        if (predit->files == NULL) {
+                            wprintf(L"predit->files new_List failed!\n");
+                            return;
+                        }
+
+                        queue( predit->files, file );
+
+                        if (prev != NULL) {
+                            predit->next    = prev->next;
+                            prev->next      = predit;
+                        } else {
+                            predit->next    = NULL;
+                            predit_list     = predit;
+                        }
+                    }
+
+                }
+
+            } else {
+
+                /* new checksum -> add preDit */
+
+dbg( L"new checksum; adding predit\n");
+
+                predit = malloc( sizeof(struct PreDittoFile) );
+
+                if (predit == NULL) {
+                    wprintf(L"malloc predit failed!\n");
+                    return;
+                }
+
+                predit->checksum    = checksum;
+                predit->diff_at     = len;
+
+                predit->size        = size;
+                predit->offs        = offs;
+
+                predit->buf         = buf;
+                predit->len         = len; // == BUF_SIZE */
+
+                predit->files       = new_List( );
+
+                if (predit->files == NULL) {
+                    wprintf(L"predit->files new_List failed!\n");
+                    return;
+                }
+
+                queue( predit->files, file );
+
+                if (prev != NULL) {
+                    predit->next    = prev->next;
+                    prev->next      = predit;
+                } else {
+                    predit->next    = NULL;
+                    predit_list     = predit;
+                }
+
+                /* allocate new buf */
+
+            }
+
+        } else {
+            wprintf( L"error opening/reading file (or allocating buffer)! (file=%s)\n", name);
+        }
+
+//dbg(L"enter for next:");getchar();
     }
 
+    done( iter );
 
-    for (node = fzbucket->files.first; node != NULL; node = node->next) {
+dbg(L"done\n");
+    /* at this stage we have a list of buckets, with each bucket containing:
 
-        struct File *   file;
+        0. predit->files->count == 1    -> no duplicates; can be removed/ignored from further evaluation
+        1. len==BUF_SIZE    -> list of files that match byte to byte for the given offs
+        2. len < BUF_SIZE   ->
+    */
 
-        file = (struct File *)node->data;
+//wprintf(L"list pre-ditto list of files\n");
+    {
+        struct PreDittoFile *   predit;
 
-        wprintf( L"  "); print_full_filename( file ); wprintf( L"\n" );
+        for (predit = predit_list; predit != NULL; predit = predit->next) {
 
+            if (predit->files->count > 1) {
+                wprintf(L"almost ditto files:\n");
+                print_list(predit->files, print_File, 50);
+                wprintf(L"\n");
+            } else {
+//wprintf(L"IGNORE pre-ditto bucket ( %s )\n", ((struct File *)predit->files->head)->name);
+            }
+
+            free(predit->buf);
+        }
 
     }
-
 }
-#endif
 

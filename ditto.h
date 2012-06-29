@@ -3,6 +3,7 @@
 
 #include <string.h>
 
+#include "list.h"
 
 #ifdef _MSC_VER
 #   ifndef inline
@@ -28,5 +29,10 @@ void
         void *  file
 );
 
+void
+    dittoer (
+        long long int   size,
+        struct List *   file_list
+);
 
 #endif
