@@ -23,6 +23,8 @@ struct File {
     struct File *       sibling;
 
     long long int       size;
+
+    void *              context;
 };
 
 struct Misc {

@@ -63,16 +63,19 @@ void *
 
     if (fac->size != 0)  {
 
-        size = ((size + fac->size - 1) / fac->size) * fac->size;
-
-        if (fac->free != NULL) {
+        if (fac->free != NULL && size == fac->size) {
 
             buf = fac->free;
             fac->free = *(void **)fac->free;
 
 //wprintf(L"FALLOC: pop from free list: %p\n", buf);
             return buf;
+
+        } else {
+            /* round off to multiple of fac->size, for alignment issues */
+            size = ((size + fac->size - 1) / fac->size) * fac->size;
         }
+
     }
 
     do {
