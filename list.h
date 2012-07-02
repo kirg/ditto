@@ -25,14 +25,16 @@ void
 struct List {
     struct Node *   head;
     struct Node *   tail;
+
     int             count;
 };
-
 
 struct Node {
     struct Node *   next;
     void *          data;
 };
+
+
 
 
 struct Iter {
