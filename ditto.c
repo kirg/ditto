@@ -916,6 +916,8 @@ void
 
         struct FilesizeBucket * fzbucket;
 
+        errors = 0;
+
         while ((fzbucket = pop( &hash_buckets[ i ] )) != NULL) {
 
             struct Iter *   iter;
