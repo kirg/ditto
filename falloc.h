@@ -2,6 +2,7 @@
 #define _FALLOC_H_
 
 #include <string.h>
+#include <windows.h>
 
 
 #ifdef _MSC_VER
@@ -46,6 +47,28 @@ void
         void *      buf
 );
 
+void
+    falloc_stat (
+        FastAlloc   fa
+);
+
+static inline
+void *
+    valloc (
+        int size
+)
+{
+    return VirtualAlloc( NULL, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE );
+}
+
+static inline
+void
+    vfree (
+        void *  buf
+)
+{
+    VirtualFree( buf, 0, MEM_RELEASE );
+}
 
 
 #endif

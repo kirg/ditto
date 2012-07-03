@@ -48,6 +48,7 @@ void
 {
 }
 
+
 void *
     falloc (
         FastAlloc   fa,
@@ -68,7 +69,7 @@ void *
             buf = fac->free;
             fac->free = *(void **)fac->free;
 
-//wprintf(L"FALLOC: pop from free list: %p\n", buf);
+if (fac->type[0] == L'B') wprintf(L"FALLOC(%s): pop from free list: %p\n", fac->type, buf);
             return buf;
 
         } else {
@@ -95,8 +96,8 @@ void *
             int                 valloc_size;
 
             valloc_size = (fac->vallocs == NULL) ?
-                VIRTALLOC_MINSIZE :
-                fac->vallocs->size * VIRTALLOC_FACTOR;
+                            VIRTALLOC_MINSIZE :
+                                fac->vallocs->size * VIRTALLOC_FACTOR;
 
             if (valloc_size > VIRTALLOC_MAXSIZE) {
                 valloc_size = VIRTALLOC_MAXSIZE;
@@ -116,7 +117,7 @@ void *
 
                     v->size         = valloc_size;
 
-//wprintf(L"VirtualAlloc(%d bytes) for %s: %p\n", valloc_size, fac->type, v->address);
+if (fac->type[0] == L'B') wprintf(L"VirtualAlloc(%d bytes, total=%I64d bytes) for %s: %p\n", valloc_size, fac->total, fac->type, v->address);
 
                     fac->next   = v->address;
                     fac->end    = (char *)v->address + v->size;
@@ -153,7 +154,7 @@ void
     if (fac->size != 0) {
         *(void **)buf = fac->free;
         fac->free = buf;
-//wprintf(L"FFREE: push to free list:%p\n", buf);
+if (fac->type[0] == L'B') wprintf(L"FFREE(%s): push to free list:%p\n", fac->type, buf);
     } else {
         /* free of variable sized buffer -> do nothing */
     }
@@ -216,4 +217,9 @@ wprintf( L"VirtualFree(%016X, %d) failed\n", va->address, va->size );
     free( fac );
 }
 
-
+void
+    falloc_stat (
+        FastAlloc   fa
+)
+{
+}

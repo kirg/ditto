@@ -58,6 +58,31 @@ struct Directory {
 };
 
 
+struct FilesizeBucket {
+    long long int   size;   /* size of files in the bucket */
+    long long int   offs;   /* offset upto which files are ditto */
+
+    struct List *   files;  /* the list of files */
+};
+
+struct PreDittoContext {
+    struct PreDittoContext *   next;
+
+    int             checksum;
+    int             diff_at;    /* for two bufs with same checksum that differ; diff_at -> buf offs */
+
+    char *          buf;
+    int             len;
+
+    //long long int   size;
+    //long long int   offs;
+
+    struct List *   files; /* list of 'struct File's */
+};
+
+
+
+
 int
     build_tree (
         struct Directory *  this
@@ -76,8 +101,8 @@ void
 );
 
 void
-    hash_files (
-        struct List *   bucket
+    hash_file (
+        struct File *   file
 );
 
 #endif

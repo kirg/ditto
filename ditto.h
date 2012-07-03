@@ -17,9 +17,14 @@ void ditto_init( void );
 void ditto_cleanup( void );
 
 
-void include_dir( wchar_t * path );
-
-void include_dirA( char * path );
+void
+    include_dir (
+#ifdef __GNUC__  
+        char *      arg
+#else
+        wchar_t *   arg
+#endif
+);
 
 
 void scan( void );
@@ -30,9 +35,8 @@ void
 );
 
 void
-    dittoer (
-        long long int   size,
-        struct List *   file_list
+    file_dittoer (
+        void
 );
 
 #endif
