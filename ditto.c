@@ -119,15 +119,23 @@ void
     len = wcslen(arg);
 #endif
 
-    path    = falloc( fa_String,    sizeof(wchar_t) * (len + 2) );
+    path    = falloc( fa_String,    sizeof(wchar_t) * (len + 6) );
     dir     = falloc( fa_Directory, sizeof(struct Directory) );
 
     if (path && dir) {
+
         int i;
 
+        path[0] = L'\\';
+        path[1] = L'\\';
+        path[2] = L'\?';
+        path[3] = L'\\';
+
         for (i = 0; i < len; ++i) {
-            path[i] = arg[i];
+            path[i+4] = arg[i];
         }
+
+        len += 4;
 
         /* add trailing '\', if necessary */
         if (path[len-1] != L'\\') {
@@ -622,7 +630,6 @@ wchar_t *
         name[end] = 0;
 
         done( iter );
-        
     }
 
     return name;
@@ -652,9 +659,8 @@ void
 )
 {
     struct File * file = data;
-    wprintf( L"%20I64d : ", file->size);
     print_StringList( file->path, 256 );
-    wprintf( L"\n" );
+    wprintf( L" (%I64d)\n", file->size);
 }
 
 int
@@ -877,6 +883,9 @@ int
 #define START_OFFSET    (0)
 #define BUF_SIZE        (256*1024)
 
+#define ERROR_RETRIES   (3)
+
+
 FastAlloc fa_PreDittoContext;
 FastAlloc fa_Buffer;
 
@@ -887,7 +896,7 @@ struct DittoFiles {
 
 long long int   total_ditto_size;
 
-struct List *   unique_files;
+//struct List *   unique_files;
 
 
 void
@@ -896,6 +905,7 @@ void
 )
 {
     int i;
+    int errors;
 
     ditto_files_list.files_list = new_List( );
 
@@ -906,30 +916,25 @@ void
 
         struct FilesizeBucket * fzbucket;
 
-        struct Iter *   iter;
-        struct File *   file;
+        while ((fzbucket = pop( &hash_buckets[ i ] )) != NULL) {
 
-        long long int   size;
-        long long int   offs;
-        struct List *   files;
+            struct Iter *   iter;
+            struct File *   file;
 
-        LARGE_INTEGER   li_offs;
+            long long int   size;
+            long long int   offs;
+            struct List *   files;
 
-        int buf_size; /* to checksum/compare */
+            LARGE_INTEGER   li_offs;
 
-        struct PreDittoContext *   preDit_list;
-        struct PreDittoContext *   preDit;
-        struct PreDittoContext *   preDit_prev;
+            int buf_size; /* to checksum/compare */
+
+            struct PreDittoContext *   preDit_list;
+            struct PreDittoContext *   preDit;
+            struct PreDittoContext *   preDit_prev;
+
 
 //wprintf( L"processing hash_buckets[ %d ] (buckets=%d)\n", i, hash_buckets[i].count );
-
-        do {
-
-            fzbucket = pop( &hash_buckets[ i ] );
-
-            if (fzbucket == NULL) {
-                break; /* end of list */
-            }
 
             offs    = fzbucket->offs;
             size    = fzbucket->size;
@@ -972,8 +977,6 @@ void
 
                     file->context = (void *)hF;
 
-                } else {
-                    hF = (HANDLE)file->context;
                 }
 
                 buf = falloc( fa_Buffer, buf_size );
@@ -1005,7 +1008,7 @@ void
 
                             /* this is for the uncommon case where the checksum is the same, but the buffers differ */
 
-wprintf( L"######### mismatched at diff_at=%d (checksum=%d) ##############\n", diff_at, checksum );
+wprintf( L"######### for checksum=%d, buf mismatched at offs %d ##############\n", checksum, diff_at );
 
                             diff_at2 = 0;
 
@@ -1057,9 +1060,10 @@ wprintf( L"######### mismatched at diff_at=%d (checksum=%d) ##############\n", d
                                     preDit->next        = preDit_prev->next;
                                     preDit_prev->next   = preDit;
                                 } else {
-                                    preDit->next    = NULL;
+                                    preDit->next    = preDit_list;
                                     preDit_list     = preDit;
                                 }
+
                             }
 
                         }
@@ -1097,7 +1101,7 @@ wprintf( L"######### mismatched at diff_at=%d (checksum=%d) ##############\n", d
                             preDit->next        = preDit_prev->next;
                             preDit_prev->next   = preDit;
                         } else {
-                            preDit->next    = NULL;
+                            preDit->next    = preDit_list;
                             preDit_list     = preDit;
                         }
 
@@ -1107,22 +1111,45 @@ wprintf( L"######### mismatched at diff_at=%d (checksum=%d) ##############\n", d
 
                 } else {
 
+                    wchar_t *   path = full_filename( file ); /* FIXME: free path buffer */
+
+                    wprintf( L"error opening/reading file (or allocating buffer)! (file=%s)\n", path);
+
+                    ++errors;
+
                     ffree( fa_Buffer, buf );
 
-                    wprintf( L"error opening/reading file (or allocating buffer)! (file=%s)\n", file->name);
+                    break;
 
-                    queue( &hash_buckets[ i ], fzbucket ); /* push to end so it is retried later */
+                    if (errors < ERROR_RETRIES) {
 
-                    continue; /* FIXME: ignore and continue?!! */
+                        wprintf(L"will retry later\n");
+                        queue( &hash_buckets[ i ], fzbucket ); /* push to end so it is retried later */
+                        continue; /* FIXME: ignore and continue?!! */
+
+                    } else {
+
+                        delete_List( files );
+                        ffree( fa_FilesizeBucket, fzbucket );
+
+                        wprintf(L"too many errors; giving up\n");
+                        break;
+                    }
                 }
 
             }
 
             done( iter );
 
+            if (errors > 0) {
+            //if (errors == ERROR_RETRIES) {
+                wprintf(L"skipping bucket\n");
+                continue;
+            }
 
             /* finished processing files in this fzbucket; we don't need the fzbucket any more */
 
+            delete_List( files );
             ffree( fa_FilesizeBucket, fzbucket );
 
 
@@ -1141,10 +1168,9 @@ wprintf( L"######### mismatched at diff_at=%d (checksum=%d) ##############\n", d
 
                         CloseHandle( f->context );
                         f->context = NULL;
-//{
-//    wprintf(L"unique file: ");
-//    print_File( f );
-//}
+
+// wprintf(L"unique file: "); print_File( f );
+
                         delete_List( preDit->files );
 
                     } else {
@@ -1169,9 +1195,9 @@ wprintf( L"######### mismatched at diff_at=%d (checksum=%d) ##############\n", d
 
                             push( ditto_files_list.files_list, preDit->files );
 
-                            total_ditto_size += size * preDit->files->count;
+                            total_ditto_size += size * (preDit->files->count - 1); // redundant bytes
 
-wprintf(L"\rditto %d [total=%I64d]:\n", ditto_files_list.files_list->count, total_ditto_size);
+wprintf(L"ditto #%d [size=%I64d, redundant=%I64d]:\n", ditto_files_list.files_list->count, size, total_ditto_size);
 print_list(preDit->files, print_File, 50);
 wprintf(L"--\n");
 
@@ -1189,12 +1215,6 @@ wprintf(L"--\n");
 
                             push( &hash_buckets[ i ], fzbucket_new );
                         }
-//{
-//    wprintf(L"new pre-ditto files bucket (count=%d)\n", fzbucket_new->files->count);
-//
-//    print_list(fzbucket_new->files, print_File, 10);
-//    wprintf(L"\n");
-//}
                     }
 
                     ffree( fa_Buffer, preDit->buf );
@@ -1204,9 +1224,11 @@ wprintf(L"--\n");
 
                     ffree( fa_PreDittoContext, free_preDit );
                 }
+
+//falloc_stat( fa_Buffer );
             }
 
-        } while (1);
+        }
 
 //wprintf( L"\ndone processing hash_buckets[ %d ]\n", i );
 
