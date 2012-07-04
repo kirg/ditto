@@ -126,6 +126,8 @@ void
 
         int i;
 
+/* FIXME: GetDriveType == DRIVE_REMOTE -> "\\?\UNC\ */
+
         path[0] = L'\\';
         path[1] = L'\\';
         path[2] = L'\?';
@@ -218,10 +220,10 @@ wprintf(L"scan complete: %d dirs, %d files, %d links\n", count( all_dirs ), coun
     done( iter );
 
 
-wprintf(L"enter to sort files by size .."); getchar();
-wprintf(L"files: %d files\n", count( all_files ));
-
-    list_files( all_files );
+//wprintf(L"enter to sort files by size .."); getchar();
+//wprintf(L"files: %d files\n", count( all_files ));
+//
+//    list_files( all_files );
 
 
 /*
@@ -899,12 +901,17 @@ long long int   total_ditto_size;
 //struct List *   unique_files;
 
 
+#define BUF_SIZE_ALIGN  (4096)
+
+#define MIN_SIZE        (0)
+
 void
     file_dittoer (
         void
 )
 {
     int i;
+    int t0;
     int errors;
 
     ditto_files_list.files_list = new_List( );
@@ -935,20 +942,25 @@ void
             struct PreDittoContext *   preDit;
             struct PreDittoContext *   preDit_prev;
 
-
-//wprintf( L"processing hash_buckets[ %d ] (buckets=%d)\n", i, hash_buckets[i].count );
+t0 = clock( );
 
             offs    = fzbucket->offs;
             size    = fzbucket->size;
             files   = fzbucket->files;
 
-            if (files->count == 1 || size == 0) {
-                break; /* skip buckets with one file or zero-size files */
+wprintf(L"\rdittoing bucket #%d [size=%I64d, count=%d] offs=%I64d          ", i, size, files->count, offs);
+
+            if (files->count == 1) {
+                break; /* skip buckets with one file */
             }
 
+            if (size < MIN_SIZE) {
+                break; /* skip buckets with files less than MIN_SIZE */
+            }
 
             preDit_list         = NULL;
 
+            buf_size            = size - ((size + BUF_SIZE_ALIGN) / BUF_SIZE_ALIGN);
             buf_size            = BUF_SIZE; /* FIXME: say if (files->count == 2) use a larger buf-size? */
             li_offs.QuadPart    = offs;
 
@@ -1010,7 +1022,7 @@ void
 
                             /* this is for the uncommon case where the checksum is the same, but the buffers differ */
 
-wprintf( L"######### for checksum=%d, buf mismatched at offs %d ##############\n", checksum, diff_at );
+wprintf( L"######### for checksum=%d, buf mismatched at offs %d (size=%I64d) ##############\n", checksum, diff_at, size );
 
                             diff_at2 = 0;
 
@@ -1199,7 +1211,8 @@ wprintf( L"######### for checksum=%d, buf mismatched at offs %d ##############\n
 
                             total_ditto_size += size * (preDit->files->count - 1); // redundant bytes
 
-wprintf(L"ditto #%d [size=%I64d, redundant=%I64d]:\n", ditto_files_list.files_list->count, size, total_ditto_size);
+wprintf(L"\rditto #%d [size=%I64d, ditto=%I64d, ticks=%d]:                     \n",
+            ditto_files_list.files_list->count, size, total_ditto_size, clock()-t0);
 print_list(preDit->files, print_File, 50);
 wprintf(L"--\n");
 
