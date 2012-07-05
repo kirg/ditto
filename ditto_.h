@@ -58,6 +58,14 @@ struct Directory {
 };
 
 
+struct ScanDirectory {
+
+    struct Directory    dir;
+
+    wchar_t *           prepend;
+};
+
+
 struct FilesizeBucket {
     long long int   size;   /* size of files in the bucket */
     long long int   offs;   /* offset upto which files are ditto */

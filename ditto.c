@@ -88,6 +88,8 @@ void
     delete_List( all_dirs );
     delete_List( all_files );
 
+    /* FIXME: free(scan_dir); */
+
     delete_List( scan_paths );
 
     delete_falloc( fa_Directory );
@@ -99,77 +101,131 @@ void
     falloc_cleanup( );
 }
 
+#define MAX_PATH_LEN    (32767)
 
 void
     include_dir (
 #ifdef __GNUC__  
-        char *      arg
+        char *      argA
 #else
         wchar_t *   arg
 #endif
 )
 {
-    int                 len;
-    wchar_t *           path;
-    struct Directory *  dir;
+    wchar_t *   buf;
+    int         len;
+
+    wchar_t *   prepend;
+    wchar_t *   path;
+    int         i;
+
+
+    struct ScanDirectory *  scan_dir;
+
 
 #ifdef __GNUC__  
-    len = strlen(arg);
-#else
-    len = wcslen(arg);
+
+    wchar_t *   arg;
+
+
+    len = strlen(argA);
+
+    arg = malloc( sizeof(wchar_t) * (len + 1) );
+
+    if (arg == NULL) {
+        return;
+    }
+
+    for (i = 0; i < len; ++i) {
+        arg[i] = argA[i];
+    }
+
+    arg[len] = 0;
+
 #endif
 
-    path    = falloc( fa_String,    sizeof(wchar_t) * (len + 6) );
-    dir     = falloc( fa_Directory, sizeof(struct Directory) );
 
-    if (path && dir) {
+    buf = malloc( sizeof(wchar_t) * (MAX_PATH_LEN + 1) );
 
-        int i;
+    if (buf == NULL) {
+        goto exit;
+    }
 
-/* FIXME: GetDriveType == DRIVE_REMOTE -> "\\?\UNC\ */
+    len = GetFullPathName( arg, sizeof(wchar_t) * (MAX_PATH_LEN + 1), buf, NULL );
 
-        path[0] = L'\\';
-        path[1] = L'\\';
-        path[2] = L'\?';
-        path[3] = L'\\';
+    if (len == 0 || len > MAX_PATH_LEN) {
+        wprintf( L"error allocating buffer for path-name (gle=%d)\n", GetLastError( ) );
+        goto exit;
+    }
 
-        for (i = 0; i < len; ++i) {
-            path[i+4] = arg[i];
+
+    if (len > 2 && buf[0] == L'\\' && buf[1] == L'\\') {
+
+        if (buf[2] != L'\?') {
+            prepend = L"\\\\\?\\UNC"; /* \\?\UNC + \\ */
+        } else {
+            prepend = L"";
         }
 
-        len += 4;
+    } else {
+        prepend = L"\\\\\?";
+    }
 
-        /* add trailing '\', if necessary */
-        if (path[len-1] != L'\\') {
-            path[len] = L'\\';
-            ++len;
+    /* add trailing '\', if necessary */
+    if (buf[len-1] != L'\\') {
+        buf[len] = L'\\';
+        ++len;
+    }
+    
+    scan_dir    = malloc( sizeof(struct ScanDirectory) );
+    path        = falloc( fa_String, sizeof(wchar_t) * (len + 1) );
+
+    if (scan_dir && path) {
+
+        for (i = 0; i < len; ++i) {
+            path[i] = buf[i];
         }
 
         path[len] = 0;
 
-        dir->name       = path;
-        dir->parent     = NULL;
-        dir->sibling    = NULL;
+        scan_dir->dir.name      = path;
+        scan_dir->dir.parent    = NULL;
+        scan_dir->dir.sibling   = NULL;
 
-        dir->path       = new_List( );
-        queue( dir->path, dir->name);
+        scan_dir->dir.path      = new_List( );
+        queue( scan_dir->dir.path, scan_dir->dir.name);
 
-        dir->n_files    = 0;
-        dir->files      = NULL;
+        scan_dir->dir.n_files   = 0;
+        scan_dir->dir.files     = NULL;
 
-        dir->n_dirs     = 0;
-        dir->dirs       = NULL;
+        scan_dir->dir.n_dirs    = 0;
+        scan_dir->dir.dirs      = NULL;
 
-        dir->n_misc     = 0;
-        dir->misc       = NULL;
+        scan_dir->dir.n_misc    = 0;
+        scan_dir->dir.misc      = NULL;
 
-        queue( scan_paths, dir );
+        scan_dir->prepend           = prepend;
 
-wprintf(L"include_dir: %s\n", dir->name);
+        queue( scan_paths, scan_dir );
+
+wprintf(L"include_dir: %s\n", scan_dir->dir.name);
 
     } else {
         wprintf(L"falloc path/dir failed\n");
     }
+
+
+exit:
+    if (buf != NULL) {
+        free( buf );
+    }
+
+#ifdef __GNUC__  
+    if (arg != NULL) {
+        free( arg );
+    }
+#endif
+
 }
 
 
@@ -178,8 +234,8 @@ void
         void
 )
 {
-    struct Iter *       iter;
-    struct Directory *  dir;
+    struct Iter *           iter;
+    struct ScanDirectory *  scan_dir;
 int t0; /* clock */
 
     fdi_buf = malloc( FILE_DIRECTORY_INFORMATION_BUFSIZE );
@@ -191,15 +247,15 @@ int t0; /* clock */
 
     iter = iterator( scan_paths );
 
-    for (dir = next( iter ); dir != NULL; dir = next( iter )) {
+    for (scan_dir = next( iter ); scan_dir != NULL; scan_dir = next( iter )) {
 
-wprintf(L"scanning %s:\n", dir->name);
+wprintf(L"scanning %s:\n", scan_dir->dir.name);
 t0=clock();
 
-        wcsncpy( build_tree_path, dir->name, MAX_PATHNAME_LEN );
+        wcsncpy( build_tree_path, scan_dir->dir.name, MAX_PATHNAME_LEN );
         build_tree_path_len = wcslen( build_tree_path );
 
-        build_tree( dir );
+        build_tree( &scan_dir->dir );
 wprintf(L"\rdone (%d ticks)                                                    \n", clock()-t0);
     }
 
@@ -211,33 +267,18 @@ wprintf(L"scan complete: %d dirs, %d files, %d links\n", count( all_dirs ), coun
 
     iter = iterator( scan_paths );
 
-    for (dir = next( iter ); dir != NULL; dir = next( iter )) {
+    for (scan_dir = next( iter ); scan_dir != NULL; scan_dir = next( iter )) {
 
-        //print_tree( dir );
+        //print_tree( &scan_dir->dir );
 
     }
 
     done( iter );
 
+// wprintf(L"files: %d files\n", count( all_files ));
+// list_files( all_files );
+// wprintf(L"enter to sort files by size .."); getchar();
 
-//wprintf(L"enter to sort files by size .."); getchar();
-//wprintf(L"files: %d files\n", count( all_files ));
-//
-//    list_files( all_files );
-
-
-/*
-    hash_init( count( all_files ), 0, 0 );
-
-wprintf(L"hashing files: ");
-t0=clock();
-    //hash_files( all_files );
-wprintf(L"done (%d ticks)\n", clock()-t0);
-
-    wprintf(L"\n");
-    hash_stats( );
-    //find_dittos( );
-*/
 
 wprintf(L"enter to find ditto files .."); getchar();
     file_dittoer( );
@@ -591,6 +632,53 @@ struct List *
     }
 
     return list;
+}
+
+wchar_t *
+    fullpathname (
+        struct File *   file,
+        wchar_t *       buf,
+        //int             len,
+        int             prepend /* include */
+)
+{
+    struct List *       list;
+    struct Directory *  p;
+    wchar_t *           name;
+    int                 len;
+
+    list = new_List( );
+
+    push( list, file->name );
+    len = wcslen(file->name);
+
+    for (p = file->parent; p != NULL; p = p->parent) {
+        push( list, p->name );
+        len += wcslen(p->name);
+    }
+
+    name = falloc( fa_String, sizeof(wchar_t) * (len + 1) );
+
+    if (name) {
+        struct Iter *   iter;
+        wchar_t *       component;
+        int             end;
+
+        end = 0;
+
+        iter = iterator( list );
+
+        for (component = next( iter ); component != NULL; component = next( iter )) {
+            wcsncpy( name+end, component, len-end );
+            end += wcslen( component );
+        }
+
+        name[end] = 0;
+
+        done( iter );
+    }
+
+    return name;
 }
 
 wchar_t *
@@ -1022,7 +1110,7 @@ wprintf(L"\rdittoing bucket #%d [size=%I64d, count=%d] offs=%I64d          ", i,
 
                             /* this is for the uncommon case where the checksum is the same, but the buffers differ */
 
-wprintf( L"######### for checksum=%d, buf mismatched at offs %d (size=%I64d) ##############\n", checksum, diff_at, size );
+if (size > sizeof(int)) { wprintf( L"######### for checksum=%d, buf mismatched at offs %d (size=%I64d) ##############\n", checksum, diff_at, size ); }
 
                             diff_at2 = 0;
 
