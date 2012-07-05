@@ -227,30 +227,21 @@ void
 
     node = falloc( fa_List, sizeof(struct Node) );
 
-//wprintf(L"F push(list=%p, node=%p, data=%p)\n", list, node, data);
-
     if (node != NULL) {
-
-//wprintf(L"A");
 
         node->data  = data;
 
-//wprintf(L"B");
         node->next  = list->head;
-//wprintf(L"C");
         list->head  = node;
 
-//wprintf(L"D");
         ++list->count;
 
-//wprintf(L"E");
         if (list->tail == NULL) {
             list->tail = node;
         }
     } else {
         wprintf(L"falloc Node failed\n");
     }
-//wprintf(L"F\n");
 }
 
 static inline
