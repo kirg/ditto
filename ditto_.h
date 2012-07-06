@@ -63,6 +63,7 @@ struct ScanDirectory {
     struct Directory    dir;
 
     wchar_t *           prepend;
+    wchar_t *           base_path;
 };
 
 
