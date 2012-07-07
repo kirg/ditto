@@ -282,8 +282,8 @@ wprintf(L"scan complete: %d dirs, %d files, %d links\n", count( all_dirs ), coun
 // list_files( all_files );
 // wprintf(L"enter to sort files by size .."); getchar();
 
-wprintf(L"enter to find ditto files .."); getchar();
-    file_dittoer( );
+//wprintf(L"enter to find ditto files .."); getchar();
+    ditto_files( );
 }
 
 
@@ -951,7 +951,7 @@ int
         c1 += c0;
     }
 
-    for (i = i*sizeof(int); i < len; ++i) {
+    for (i = i * sizeof(int); i < len; ++i) {
         c0 += ((char *)buf)[i];
         c1 += c0;
     }
@@ -988,30 +988,43 @@ struct DittoBuckets {
     struct List *   files_list;  /* list of files that are _ditto_ */
 };
 
+
+
 struct List *   ditto_buckets; /* list of list-of-files that are _ditto_ */
+
+struct List *   partial_fzbuckets; /* list of list-of-files that are likely ditto */
+
+struct List *   retry_fzbuckets; /* list of list-of-files that need to be retried */
+
+struct List *   unique_files;
+
+struct List *   error_files;
+
 
 long long int   total_ditto_size;
 long long int   total_ditto_count;
 
-
-struct List *   unique_files;
-struct List *   error_files;
 
 
 #define BUF_SIZE_ALIGN  (4096)
 
 #define MIN_SIZE        (0)
 
+
 void
-    file_dittoer (
+    ditto_files (
         void
 )
 {
     int i;
-    int t0;
-    int errors;
+    int pre_ditto, pre_partial;
+
+int t0=clock();
 
     ditto_buckets  = new_List( );
+
+    partial_fzbuckets   = new_List( );
+    retry_fzbuckets     = new_List( );
 
     unique_files        = new_List( );
     error_files         = new_List( );
@@ -1020,365 +1033,359 @@ void
     fa_PreDittoContext  = new_falloc( L"PreDittoContext", sizeof(struct PreDittoContext) );
     fa_Buffer           = new_falloc( L"Buffer", BUF_SIZE );
 
+wprintf(L"dittoing files ..\n");
     for (i = 0; i < HASH_BUCKETS_NUM; ++i) {
+        file_dittoer( &hash_buckets[ i ] );
+    }
 
-        struct FilesizeBucket * fzbucket;
+wprintf(L"dittoing files ..\n");
+    file_dittoer( retry_fzbuckets );
 
-        errors = 0;
 
-        while ((fzbucket = pop( &hash_buckets[ i ] )) != NULL) {
+    pre_ditto   = ditto_buckets->count;
+    pre_partial = partial_fzbuckets->count;
 
-            struct Iter *   iter;
-            struct File *   file;
+wprintf( L"\rpartial dittoing done: ditto=%d, partial=%d                         \n", ditto_buckets->count, partial_fzbuckets->count );
 
-            long long int   size;
-            long long int   offs;
+    file_dittoer( partial_fzbuckets );
 
-            LARGE_INTEGER   li_offs;
+wprintf( L"\rdittoing complete: ditto=%d (was ditto=%d, partial=%d)                        \n", ditto_buckets->count, pre_ditto, pre_partial );
 
-            int buf_size; /* to checksum/compare */
+    delete_falloc( fa_Buffer );
+    delete_falloc( fa_PreDittoContext );
+}
 
-            struct PreDittoContext *   preDit_head;
-            struct PreDittoContext *   preDit;
-            struct PreDittoContext *   preDit_prev;
 
-t0 = clock( );
+void
+    file_dittoer (
+        struct List *   fzbuckets_list
+)
+{
+    struct FilesizeBucket * fzbucket;
 
-            offs    = fzbucket->offs;
-            size    = fzbucket->size;
+    while ((fzbucket = pop( fzbuckets_list )) != NULL) {
 
-wprintf(L"\rdittoing bucket #%d [size=%I64d, count=%d] offs=%I64d          ", i, size, fzbucket->files->count, offs);
+        struct Iter *   iter;
+        struct File *   file;
 
-            if (fzbucket->files->count == 1) {
-                break; /* skip buckets with one file */
+        long long int   size;
+        long long int   offs;
+
+        LARGE_INTEGER   li_offs;
+
+        int buf_size; /* to checksum/compare */
+
+        struct PreDittoContext *   preDit_head;
+        struct PreDittoContext *   preDit;
+        struct PreDittoContext *   preDit_prev;
+
+        int fzbucket_error = 0;
+
+int t0 = clock( );
+
+        offs    = fzbucket->offs;
+        size    = fzbucket->size;
+
+wprintf(L"\rdittoing bucket (num=%d), size=%I64d, count=%d, offs=%I64d          ", ditto_buckets->count, size, fzbucket->files->count, offs);
+
+        if (fzbucket->files->count == 1) {
+            break; /* skip buckets with one file */
+        }
+
+        if (size < MIN_SIZE) {
+            break; /* skip buckets with files less than MIN_SIZE */
+        }
+
+        preDit_head         = NULL;
+
+        //buf_size            = size - ((size + BUF_SIZE_ALIGN) / BUF_SIZE_ALIGN);
+        buf_size            = BUF_SIZE; /* FIXME: say if (files->count == 2) use a larger buf-size? */
+        li_offs.QuadPart    = offs;
+
+
+        if (offs >= size) {
+            /* we would really get here only for 0-byte files */
+
+            push( ditto_buckets, fzbucket->files );
+
+            total_ditto_count   += fzbucket->files->count;
+            total_ditto_size    += size * (fzbucket->files->count - 1); // redundant bytes
+
+//wprintf(L"\rditto #%d count=%d, size=%I64d (ticks=%d) [total count=%I64d, size=%I64d]:                     \n",
+//ditto_buckets->count, fzbucket->files->count, size, clock()-t0, total_ditto_count, total_ditto_size);
+//print_list(fzbucket->files, print_File, 50);
+//wprintf(L"--\n");
+
+            goto skip_dittoing;
+        }
+
+
+        iter = iterator( fzbucket->files ); 
+
+        for (file = next( iter ); file != NULL; file = next( iter )) {
+
+            HANDLE  hF;
+            char *  buf;
+            int     len;
+
+            int     checksum;
+            int     diff_at;
+            int     diff_at2;
+
+            DWORD   bytes_read;
+
+            hF = (HANDLE)file->context;
+
+            if (hF == NULL || hF == INVALID_HANDLE_VALUE) {
+
+                wchar_t *   path = full_filename( file ); /* FIXME: free path buffer */
+
+                /* FIXME: use read-through/no-buffering?! */
+                hF = CreateFile( path, GENERIC_READ,
+                                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                    NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL );
+
+                file->context = (void *)hF;
+
             }
 
-            if (size < MIN_SIZE) {
-                break; /* skip buckets with files less than MIN_SIZE */
-            }
+            buf = falloc( fa_Buffer, buf_size );
+            len = buf_size;
 
-            preDit_head         = NULL;
+            if ((hF != INVALID_HANDLE_VALUE) && (buf != NULL) && 
+                    SetFilePointerEx( hF, li_offs, NULL, FILE_BEGIN ) &&
+                        ReadFile( hF, buf, buf_size, &bytes_read, NULL )) {
 
-            //buf_size            = size - ((size + BUF_SIZE_ALIGN) / BUF_SIZE_ALIGN);
-            buf_size            = BUF_SIZE; /* FIXME: say if (files->count == 2) use a larger buf-size? */
-            li_offs.QuadPart    = offs;
+                len = bytes_read; /* FIXME: take care of len < buf_size in ditto-ing */
 
+                checksum = bufsum( buf, len );
 
-            if (offs >= size) {
-                /* we would really get here only for 0-byte files */
+                for (preDit_prev = NULL, preDit = preDit_head;
+                        (preDit != NULL) && (checksum > preDit->checksum);
+                            preDit_prev = preDit, preDit = preDit->next);
 
-                push( ditto_buckets, fzbucket->files );
+                if ((preDit == NULL) || (checksum != preDit->checksum)) {
 
-                total_ditto_count   += fzbucket->files->count;
-                total_ditto_size    += size * (fzbucket->files->count - 1); // redundant bytes
+                    /* new checksum -> new preDit */
 
-wprintf(L"\rditto #%d count=%d, size=%I64d (ticks=%d) [total count=%I64d, size=%I64d]:                     \n",
-        ditto_buckets->count, fzbucket->files->count, size, clock()-t0, total_ditto_count, total_ditto_size);
-print_list(fzbucket->files, print_File, 50);
-wprintf(L"--\n");
+                    preDit = falloc( fa_PreDittoContext, sizeof(struct PreDittoContext) );
 
-                goto skip_dittoing;
-            }
+                    if (preDit == NULL) {
+                        wprintf(L"falloc preDit failed!\n");
+                        return;
+                    }
 
+                    preDit->checksum    = checksum;
+                    preDit->diff_at     = len;
 
-            iter = iterator( fzbucket->files ); 
+                    preDit->buf         = buf;
+                    preDit->len         = len; // == buf_size */
 
-            for (file = next( iter ); file != NULL; file = next( iter )) {
+                    preDit->files       = new_List( );
 
-                HANDLE  hF;
-                char *  buf;
-                int     len;
+                    if (preDit->files == NULL) {
+                        wprintf(L"preDit->files new_List failed!\n");
+                        return;
+                    }
 
-                int     checksum;
-                int     diff_at;
-                int     diff_at2;
+                    enqueue( preDit->files, file );
 
-                DWORD   bytes_read;
-
-                hF = (HANDLE)file->context;
-
-                if (hF == NULL || hF == INVALID_HANDLE_VALUE) {
-
-                    wchar_t *   path = full_filename( file ); /* FIXME: free path buffer */
-
-                    /* FIXME: use read-through/no-buffering?! */
-                    hF = CreateFile( path, GENERIC_READ,
-                                    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                                        NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL );
-
-                    file->context = (void *)hF;
-
-                }
-
-                buf = falloc( fa_Buffer, buf_size );
-                len = buf_size;
-
-                if ((hF != INVALID_HANDLE_VALUE) && (buf != NULL) && 
-                        SetFilePointerEx( hF, li_offs, NULL, FILE_BEGIN ) &&
-                            ReadFile( hF, buf, buf_size, &bytes_read, NULL )) {
-
-                    len = bytes_read; /* FIXME: take care of len < buf_size in ditto-ing */
-
-                    checksum = bufsum( buf, len );
-
-                    for (preDit_prev = NULL, preDit = preDit_head;
-                            (preDit != NULL) && (checksum > preDit->checksum);
-                                preDit_prev = preDit, preDit = preDit->next);
-
-                    if ((preDit != NULL) && (checksum == preDit->checksum)) {
-
-                        diff_at = memcmp( buf, preDit->buf, len );
-
-                        if (diff_at == len) {
-
-                            enqueue( preDit->files, file );
-
-                            ffree( fa_Buffer, buf ); /* don't need the buffer any more */ /* FIXME: optimize to just re-use for next file */
-
-                        } else {
-
-                            /* this is for the (very) uncommon case where the checksum is the same, but the buffers differ */
-
-{ wprintf( L"\n######### checksum mismatch sum=%d offs=%d (size=%I64d) ##############\n", checksum, diff_at, size ); if (size > 256) getchar(); }
-
-                            diff_at2 = 0;
-
-                            for (preDit_prev = preDit, preDit = preDit->next;
-                                    preDit != NULL && (checksum == preDit->checksum) && (diff_at <= preDit->diff_at);
-                                        preDit_prev = preDit, preDit = preDit->next) {
-
-                                if (diff_at == preDit->diff_at) {
-
-                                    diff_at2 = memcmp( buf+diff_at, preDit->buf+diff_at, len-diff_at );
-
-                                    if (diff_at2 == len) {
-                                        enqueue( preDit->files, file );
-                                        ffree( fa_Buffer, buf ); /* FIXME: optimize */
-                                        break;
-                                    }
-                                }
-
-                            }
-
-                            if (diff_at2 != len) {
-
-                                preDit = falloc( fa_PreDittoContext, sizeof(struct PreDittoContext) );
-
-                                if (preDit == NULL) {
-                                    wprintf(L"falloc preDit failed!\n");
-                                    return;
-                                }
-
-                                preDit->checksum    = checksum;
-                                preDit->diff_at     = diff_at;
-
-                                // preDit->size        = max_size;
-                                // preDit->offs        = offs;
-
-                                preDit->buf         = buf;
-                                preDit->len         = len; /* == buf_size */
-
-                                preDit->files       = new_List( );
-
-                                if (preDit->files == NULL) {
-                                    wprintf(L"preDit->files new_List failed!\n");
-                                    return;
-                                }
-
-                                enqueue( preDit->files, file );
-
-                                if (preDit_prev != NULL) {
-                                    preDit->next        = preDit_prev->next;
-                                    preDit_prev->next   = preDit;
-                                } else {
-                                    preDit->next    = preDit_head;
-                                    preDit_head     = preDit;
-                                }
-
-                            }
-
-                        }
-
+                    if (preDit_prev != NULL) {
+                        preDit->next        = preDit_prev->next;
+                        preDit_prev->next   = preDit;
                     } else {
+                        preDit->next    = preDit_head;
+                        preDit_head     = preDit;
+                    }
 
-                        /* new checksum -> new preDit */
+                } else { /* if ((preDit != NULL) && (checksum == preDit->checksum)) */
 
-                        preDit = falloc( fa_PreDittoContext, sizeof(struct PreDittoContext) );
+                    diff_at = bufcmp( buf, preDit->buf, len );
 
-                        if (preDit == NULL) {
-                            wprintf(L"falloc preDit failed!\n");
-                            return;
-                        }
-
-                        preDit->checksum    = checksum;
-                        preDit->diff_at     = len;
-
-                        //preDit->size        = max_size;
-                        //preDit->offs        = offs;
-
-                        preDit->buf         = buf;
-                        preDit->len         = len; // == buf_size */
-
-                        preDit->files       = new_List( );
-
-                        if (preDit->files == NULL) {
-                            wprintf(L"preDit->files new_List failed!\n");
-                            return;
-                        }
+                    if (diff_at == len) {
 
                         enqueue( preDit->files, file );
 
-                        if (preDit_prev != NULL) {
-                            preDit->next        = preDit_prev->next;
-                            preDit_prev->next   = preDit;
-                        } else {
-                            preDit->next    = preDit_head;
-                            preDit_head     = preDit;
-                        }
-
-                        /* allocate new buf */
-
-                    }
-
-                } else {
-
-                    wchar_t *   path = full_filename( file ); /* FIXME: free path buffer */
-
-                    wprintf( L"error opening/reading file (or allocating buffer)! (file=%s)\n", path);
-
-                    ++errors;
-
-                    ffree( fa_Buffer, buf );
-
-                    break;
-
-                    if (errors < ERROR_RETRIES) {
-
-                        wprintf(L"will retry later\n");
-
-                        enqueue( &hash_buckets[ i ], fzbucket ); /* push to end so it is retried later */
-
-                        continue; /* FIXME: ignore and continue?!! */
+                        ffree( fa_Buffer, buf ); /* don't need the buffer any more */ /* FIXME: optimize to just re-use for next file */
 
                     } else {
 
-                        wprintf(L"too many errors; giving up\n");
+                        /* this is for the (very) uncommon case where the checksum is the same, but the buffers differ */
 
-                        delete_List( fzbucket->files );
-                        ffree( fa_FilesizeBucket, fzbucket );
+{ wprintf( L"\n######### checksum mismatch sum=%d offs=%d (size=%I64d) ##############\n", checksum, diff_at, size ); if (size > 256) getchar(); }
 
-                        break;
+                        diff_at2 = 0;
+
+                        for (preDit_prev = preDit, preDit = preDit->next;
+                                preDit != NULL && (checksum == preDit->checksum) && (diff_at <= preDit->diff_at);
+                                    preDit_prev = preDit, preDit = preDit->next) {
+
+                            if (diff_at == preDit->diff_at) {
+
+                                diff_at2 = memcmp( buf+diff_at, preDit->buf+diff_at, len-diff_at );
+
+                                if (diff_at2 == len) {
+                                    enqueue( preDit->files, file );
+                                    ffree( fa_Buffer, buf ); /* FIXME: optimize */
+                                    break;
+                                }
+                            }
+
+                        }
+
+                        if (diff_at2 != len) {
+
+                            preDit = falloc( fa_PreDittoContext, sizeof(struct PreDittoContext) );
+
+                            if (preDit == NULL) {
+                                wprintf(L"falloc preDit failed!\n");
+                                return;
+                            }
+
+                            preDit->checksum    = checksum;
+                            preDit->diff_at     = diff_at;
+
+                            preDit->buf         = buf;
+                            preDit->len         = len; /* == buf_size */
+
+                            preDit->files       = new_List( );
+
+                            if (preDit->files == NULL) {
+                                wprintf(L"preDit->files new_List failed!\n");
+                                return;
+                            }
+
+                            enqueue( preDit->files, file );
+
+                            if (preDit_prev != NULL) {
+                                preDit->next        = preDit_prev->next;
+                                preDit_prev->next   = preDit;
+                            } else {
+                                preDit->next    = preDit_head;
+                                preDit_head     = preDit;
+                            }
+
+                        }
+
                     }
+
                 }
 
+            } else {
+
+                wchar_t *   path = full_filename( file ); /* FIXME: free path buffer */
+
+                wprintf( L"\nerror opening/reading file (or allocating buffer)! (file=%s)\n", path);
+
+                ffree( fa_Buffer, buf );
+
+                enqueue( retry_fzbuckets, fzbucket ); /* push to retry bucket */
+
+                ++fzbucket_error;
+
+                break;
+
             }
+        }
 
-            done( iter );
+        done( iter );
 
-            if (errors > 0) {
-            //if (errors == ERROR_RETRIES) {
-                wprintf(L"skipping bucket\n");
-                continue;
-            }
+        if (fzbucket_error > 0) {
+            wprintf(L"skipping bucket\n");
+            continue;
+        }
 
-            /* finished processing files in this fzbucket; we don't need the fzbucket any more */
 
-            delete_List( fzbucket->files );
-            ffree( fa_FilesizeBucket, fzbucket );
+        /* finished processing files in this fzbucket; we don't need the fzbucket any more */
+
+        delete_List( fzbucket->files );
+        ffree( fa_FilesizeBucket, fzbucket );
 
 
 skip_dittoing:
 
-            /*
-                now go through all of the 'preDit' buckets and:
+        /*
+            now go through all of the 'preDit' buckets and:
 
-                - dispose off buckets with just one file ( there is not a ditto for these files )
+            - dispose off buckets with just one file ( there is not a ditto for these files )
 
-                - files whose 'new_offs' exceeds size, put into ditto bucket ( we have checked every byte of the file to match )
+            - files whose 'new_offs' exceeds size, put into ditto bucket ( we have checked every byte of the file to match )
 
-                - push back rest of the buckets back into the process list after updating 'offs' ( requires more processing )
-             */
+            - push back rest of the buckets back into the process list after updating 'offs' ( requires more processing )
+         */
 
-            preDit = preDit_head;
+        preDit = preDit_head;
 
-            while (preDit != NULL) {
+        while (preDit != NULL) {
 
-                if (preDit->files->count == 1) {
+            if (preDit->files->count == 1) {
 
-                    file = (struct File *)preDit->files->head->data;
+                file = (struct File *)preDit->files->head->data;
 
-                    CloseHandle( file->context );
-                    file->context = NULL;
+                CloseHandle( file->context );
+                file->context = NULL;
 
-                    enqueue( unique_files, file );
+                enqueue( unique_files, file );
 
-                    delete_List( preDit->files );
+                delete_List( preDit->files );
 
-                } else {
+            } else {
 
-                    long long int   new_offs;
+                long long int   new_offs;
 
-                    new_offs = offs + buf_size;
+                new_offs = offs + buf_size;
 
-                    if (new_offs >= size) {
+                if (new_offs >= size) {
 
-                        /* we have compared all of the file, so these files match byte-to-byte */
+                    /* we have compared all of the file, so these files match byte-to-byte */
 
-                        /* close handles */
-                        iter = iterator( preDit->files ); 
+                    /* close handles */
+                    iter = iterator( preDit->files ); 
 
-                        for (file = next( iter ); file != NULL; file = next( iter )) {
-                            CloseHandle( file->context );
-                            file->context = NULL;
-                        }
+                    for (file = next( iter ); file != NULL; file = next( iter )) {
+                        CloseHandle( file->context );
+                        file->context = NULL;
+                    }
 
-                        done( iter );
+                    done( iter );
 
-                        push( ditto_buckets, preDit->files );
+                    push( ditto_buckets, preDit->files );
 
-                        total_ditto_count   += preDit->files->count;
-                        total_ditto_size    += size * (preDit->files->count - 1); // redundant bytes
+                    total_ditto_count   += preDit->files->count;
+                    total_ditto_size    += size * (preDit->files->count - 1); // redundant bytes
 
-wprintf(L"\rditto #%d count=%d, size=%I64d (ticks=%d) [total count=%I64d, size=%I64d]                     \n",
-        ditto_buckets->count, preDit->files->count, size, clock()-t0, total_ditto_count, total_ditto_size);
+//wprintf(L"\rditto #%d count=%d, size=%I64d (ticks=%d) [total count=%I64d, size=%I64d]                       ",
+//ditto_buckets->count, preDit->files->count, size, clock()-t0, total_ditto_count, total_ditto_size);
 //print_list(preDit->files, print_File, 50);
 //wprintf(L"--\n");
 
-                    } else {
+                } else {
 
-                        /* push a new FilesizeBucket to compare next set of bytes */
+                    /* push a new FilesizeBucket to compare next set of bytes */
 
-                        struct FilesizeBucket * fzbucket_new;
+                    struct FilesizeBucket * fzbucket_new;
 
-                        fzbucket_new = falloc( fa_FilesizeBucket, sizeof(struct FilesizeBucket) ); /* FIXME: check for failure */
+                    fzbucket_new = falloc( fa_FilesizeBucket, sizeof(struct FilesizeBucket) ); /* FIXME: check for failure */
 
-                        fzbucket_new->offs   = new_offs;
-                        fzbucket_new->size   = size;
-                        fzbucket_new->files  = preDit->files;
+                    fzbucket_new->offs   = new_offs;
+                    fzbucket_new->size   = size;
+                    fzbucket_new->files  = preDit->files;
 
-                        push( &hash_buckets[ i ], fzbucket_new );
-                    }
-                }
-
-
-                ffree( fa_Buffer, preDit->buf );
-
-                {
-                    void *  free_preDit;
-
-                    free_preDit = preDit;
-                    preDit = preDit->next;
-
-                    ffree( fa_PreDittoContext, free_preDit );
+                    push( partial_fzbuckets, fzbucket_new );
                 }
             }
 
+            ffree( fa_Buffer, preDit->buf );
+
+            {
+                void *  free_preDit;
+
+                free_preDit = preDit;
+                preDit = preDit->next;
+
+                ffree( fa_PreDittoContext, free_preDit );
+            }
         }
-
-//wprintf( L"\ndone processing hash_buckets[ %d ]\n", i );
-
     }
-
-    wprintf(L"\n");
 }
 

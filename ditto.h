@@ -36,6 +36,11 @@ void
 
 void
     file_dittoer (
+        struct List *   fzbuckets_list
+);
+
+void
+    ditto_files (
         void
 );
 
