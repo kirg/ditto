@@ -637,6 +637,69 @@ struct List *
     return list;
 }
 
+
+void
+    print_buffer (
+        void *          buffer,
+        int             len,
+        unsigned int    offset,
+        const wchar_t * prefix
+)
+{
+    unsigned char * buf = (unsigned char *)buffer;
+    static const int radix = 16; /* default radix */
+
+    unsigned int i, j;
+
+    for (i = 0; i < len; ++i) {
+        if ((i % 16) == 0) {
+            wprintf( L"%s", prefix );
+            wprintf( L"%04X: ", offset + i - (i % 16) );
+        }
+
+        wprintf( (radix == 10) ? L"%3d " : L"%02x ", buf[i] );
+
+        if ((i % 4) == 3) {
+            wprintf( L" " );
+        }
+
+        if ((i % 16) == 15) {
+            wprintf( L"| " );
+
+            for (j = i - 15; j <= i; ++j) {
+                wprintf( L"%c", ((buf[j] < ' ') /* || (buf[j] > '~') */) ? '.' : buf[j] );
+            }
+
+            if (i != (len -1)) {
+                wprintf( L"\n" );
+
+                if ((i % 128) == 127) {
+                    wprintf( L"\n" );
+
+/*
+                    if ((i % 256) == 255) {
+                        wprintf( L"\n" );
+                    }
+*/
+                }
+            }
+        }
+    }
+
+    for (j = ((radix == 10) ? 4 : 3) * (16 - (i % 16)) + (4 - ((i / 4) % 4)); j; --j) {
+        wprintf( L" " );
+    }
+
+    wprintf( L"| " );
+
+    for (j = i - (i % 16); j < len; ++j) {
+        wprintf( L"%c", ((buf[j] < ' ') || (buf[j] > '~')) ? '.' : buf[j] );
+    }
+
+    wprintf( L"\n" );
+}
+
+
 wchar_t *
     fullpathname (
         struct File *   file,
@@ -951,7 +1014,7 @@ int
         c1 += c0;
     }
 
-    for (i = i * sizeof(int); i < len; ++i) {
+    for (i = i * sizeof(int); i < len; ++i) { /* for (i = 0; i < len; ++i) */
         c0 += ((char *)buf)[i];
         c1 += c0;
     }
@@ -1038,8 +1101,8 @@ wprintf(L"dittoing files ..\n");
         file_dittoer( &hash_buckets[ i ] );
     }
 
-wprintf(L"dittoing files ..\n");
-    file_dittoer( retry_fzbuckets );
+//wprintf(L"dittoing files ..\n");
+//    file_dittoer( retry_fzbuckets );
 
 
     pre_ditto   = ditto_buckets->count;
@@ -1212,7 +1275,9 @@ wprintf(L"\rdittoing bucket (num=%d), size=%I64d, count=%d, offs=%I64d          
 
                         /* this is for the (very) uncommon case where the checksum is the same, but the buffers differ */
 
-{ wprintf( L"\n######### checksum mismatch sum=%d offs=%d (size=%I64d) ##############\n", checksum, diff_at, size ); if (size > 256) getchar(); }
+{ wprintf( L"\n######### checksum mismatch sum=%d offs=%d (size=%I64d) ##############\n", checksum, diff_at, size );
+  print_buffer(buf+diff_at-32,         64, diff_at-32, L"BUF "); wprintf(L"--\n");
+  print_buffer(preDit->buf+diff_at-32, 64, diff_at-32, L"PRE "); getchar(); }
 
                         diff_at2 = 0;
 
@@ -1279,7 +1344,7 @@ wprintf(L"\rdittoing bucket (num=%d), size=%I64d, count=%d, offs=%I64d          
 
                 ffree( fa_Buffer, buf );
 
-                enqueue( retry_fzbuckets, fzbucket ); /* push to retry bucket */
+                push( retry_fzbuckets, fzbucket ); /* push to retry bucket */
 
                 ++fzbucket_error;
 
