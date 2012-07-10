@@ -7,16 +7,17 @@
 FastAlloc   fa_List;
 
 #define MIN_OF(A, B) (((A) < (B)) ? (A) : (B))
+
 #define MAX_OF(A, B) (((A) > (B)) ? (A) : (B))
+
+#define MAX_OF_3(A, B, C)   MAX_OF( MAX_OF( A, B ), C )
 
 void
     list_init (
         void
 )
 {
-    fa_List = new_falloc( L"List",
-                    MAX_OF( MAX_OF( sizeof(struct List), sizeof(struct Node) ),
-                        sizeof(struct Iter) ) );
+    fa_List = new_falloc( L"List", MAX_OF_3( sizeof(struct List), sizeof(struct Node), sizeof(struct Iter) ) );
 }
 
 void

@@ -6,7 +6,7 @@
 #include <stdio.h>      /* wprintf, getchar */
 #include <windows.h>    /* CreateFile, CloseHandle, GetFullPathName */
 
-#include <memory.h>     /* memcmp */
+//#include <memory.h>     /* memcmp */
 #include <time.h>       /* clock */
 
 
@@ -166,7 +166,7 @@ void
         if (buf[2] != L'\?') {
             prepend = L"\\\\\?\\UNC"; /* \\?\UNC + \\ */
         } else {
-            prepend = L"";
+            prepend = L""; /* already prefixed */
         }
 
     } else {
@@ -572,18 +572,14 @@ void
 
     if (dir == NULL) {
 
-        struct Iter *   iter;
-        struct Node *   node;
+        struct Iter *           iter;
+        struct ScanDirectory *  scan_dir;
 
         iter = iterator( scan_paths );
 
-        for ( node = next( iter ); node != NULL; node = next( iter )) {
+        for ( scan_dir = next( iter ); scan_dir != NULL; scan_dir = next( iter )) {
 
-            struct Directory * dir;
-
-            dir = node->data;
-
-            print_tree( dir );
+            print_tree( (struct Directory *)scan_dir );
 
         }
 
@@ -1055,9 +1051,9 @@ struct DittoBuckets {
 
 struct List *   ditto_buckets; /* list of list-of-files that are _ditto_ */
 
-struct List *   partial_fzbuckets; /* list of list-of-files that are likely ditto */
+struct List *   partial_fzbuckets; /* list of fzbuckets (list-of-files with size/offs) that are likely ditto */
 
-struct List *   retry_fzbuckets; /* list of list-of-files that need to be retried */
+struct List *   retry_fzbuckets; /* list of fzbuckets (list-of-files with size/offs) that need to be retried */
 
 struct List *   unique_files;
 
@@ -1084,10 +1080,10 @@ void
 
 int t0=clock();
 
-    ditto_buckets  = new_List( );
+    ditto_buckets       = new_List( );
 
-    partial_fzbuckets   = new_List( );
     retry_fzbuckets     = new_List( );
+    partial_fzbuckets   = new_List( );
 
     unique_files        = new_List( );
     error_files         = new_List( );
@@ -1110,9 +1106,11 @@ wprintf(L"dittoing files ..\n");
 
 wprintf( L"\rpartial dittoing done: ditto=%d, partial=%d                         \n", ditto_buckets->count, partial_fzbuckets->count );
 
+/*
     file_dittoer( partial_fzbuckets );
 
 wprintf( L"\rdittoing complete: ditto=%d (was ditto=%d, partial=%d)                        \n", ditto_buckets->count, pre_ditto, pre_partial );
+*/
 
     delete_falloc( fa_Buffer );
     delete_falloc( fa_PreDittoContext );
@@ -1275,9 +1273,13 @@ wprintf(L"\rdittoing bucket (num=%d), size=%I64d, count=%d, offs=%I64d          
 
                         /* this is for the (very) uncommon case where the checksum is the same, but the buffers differ */
 
-{ wprintf( L"\n######### checksum mismatch sum=%d offs=%d (size=%I64d) ##############\n", checksum, diff_at, size );
-  print_buffer(buf+diff_at-32,         64, diff_at-32, L"BUF "); wprintf(L"--\n");
-  print_buffer(preDit->buf+diff_at-32, 64, diff_at-32, L"PRE "); getchar(); }
+{ wprintf( L"\n## checksum mismatch (size=%I64d) sum=%d offs=%d len=%d [orig: sum=%d, offs=%d, len=%d ##\n",
+                                size,
+                                checksum,           diff_at,            len,
+                                preDit->checksum,   preDit->diff_at,    preDit->len );
+
+  print_buffer(buf+diff_at-32,         256, diff_at-32, L"BUF "); wprintf(L"--\n");
+  print_buffer(preDit->buf+diff_at-32, 256, diff_at-32, L"PRE "); getchar(); }
 
                         diff_at2 = 0;
 
@@ -1287,7 +1289,7 @@ wprintf(L"\rdittoing bucket (num=%d), size=%I64d, count=%d, offs=%I64d          
 
                             if (diff_at == preDit->diff_at) {
 
-                                diff_at2 = memcmp( buf+diff_at, preDit->buf+diff_at, len-diff_at );
+                                diff_at2 = bufcmp( buf+diff_at, preDit->buf+diff_at, len-diff_at );
 
                                 if (diff_at2 == len) {
                                     enqueue( preDit->files, file );
@@ -1385,6 +1387,7 @@ skip_dittoing:
 
             if (preDit->files->count == 1) {
 
+                /* unique file */
                 file = (struct File *)preDit->files->head->data;
 
                 CloseHandle( file->context );
@@ -1402,9 +1405,10 @@ skip_dittoing:
 
                 if (new_offs >= size) {
 
-                    /* we have compared all of the file, so these files match byte-to-byte */
+                    /* ditto file : we have compared all of the file, so these files match byte-to-byte */
 
-                    /* close handles */
+
+                    /* close open file handles */
                     iter = iterator( preDit->files ); 
 
                     for (file = next( iter ); file != NULL; file = next( iter )) {
@@ -1426,7 +1430,7 @@ skip_dittoing:
 
                 } else {
 
-                    /* push a new FilesizeBucket to compare next set of bytes */
+                    /* partially matched : push a new FilesizeBucket to compare next set of bytes */
 
                     struct FilesizeBucket * fzbucket_new;
 
@@ -1452,5 +1456,13 @@ skip_dittoing:
             }
         }
     }
+}
+
+void
+    ditto_dirs (
+        void
+)
+{
+
 }
 

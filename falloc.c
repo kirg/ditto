@@ -25,11 +25,6 @@ struct FastAllocatorContext {
 
     long long   total;  /* total allocated */
 
-    int         push;
-    int         new;
-    int         pop;
-    int         temp;
-
     char *      next;   /* next available slot in valloc */
     char *      end;    /* last valid offset in valloc */
 
@@ -65,17 +60,16 @@ void *
 
     fac = (struct FastAllocatorContext *)fa;
 
+//wprintf(L"\nfalloc(%d) for %s/%d\n", size, fac->type, fac->size);
+
     if (fac->size != 0)  {
 
         if (fac->free != NULL && size == fac->size) {
 
-            ++fac->pop;
-
             buf = fac->free;
-            fac->free = *(void **)buf;
+            fac->free = *(void **)fac->free;
 
-            fac->total += size;
-
+if (fac->type[0] == L'B') wprintf(L"FALLOC(%s): pop from free list: %p\n", fac->type, buf);
             return buf;
 
         } else {
@@ -90,8 +84,6 @@ void *
         if ((fac->next + size) < fac->end) {
 
             buf = fac->next;
-
-            ++fac->new;
 
             fac->next += size;
             fac->total += size;
@@ -125,12 +117,14 @@ void *
 
                     v->size         = valloc_size;
 
+if (fac->type[0] == L'B') wprintf(L"VirtualAlloc(%d bytes, total=%I64d bytes) for %s: %p\n", valloc_size, fac->total, fac->type, v->address);
+
                     fac->next   = v->address;
                     fac->end    = (char *)v->address + v->size;
 
                 } else {
 
-                    wprintf(L"VirtualAlloc(%d bytes) for %s: failed\n", valloc_size, fac->type, v->address);
+wprintf(L"VirtualAlloc(%d bytes) for %s: failed\n", valloc_size, fac->type, v->address);
                     free(v);
                     buf = NULL;
                     break;
@@ -158,12 +152,9 @@ void
     struct FastAllocatorContext * fac = (struct FastAllocatorContext *)fa;
     
     if (fac->size != 0) {
-        ++fac->push;
-
         *(void **)buf = fac->free;
         fac->free = buf;
-
-        fac->total -= fac->size;
+if (fac->type[0] == L'B') wprintf(L"FFREE(%s): push to free list:%p\n", fac->type, buf);
     } else {
         /* free of variable sized buffer -> do nothing */
     }
@@ -192,8 +183,6 @@ FastAlloc
         fac->free   = NULL;
 
         fac->type   = type;
-
-        fac->new = fac->pop = fac->push = fac->temp = 0;
     }
 
     return (FastAlloc)fac;
@@ -216,7 +205,7 @@ wprintf( L"delete_Falloc %s %d\n", fac->type, fac->total );
     for ( va = fac->vallocs; va != NULL; va = next ) {
 
         if (!VirtualFree( va->address, 0 /* va->size */, MEM_RELEASE )) {
-            wprintf( L"VirtualFree(%016X, %d) failed\n", va->address, va->size );
+wprintf( L"VirtualFree(%016X, %d) failed\n", va->address, va->size );
         } else {
 //wprintf( L"VirtualFree(%016X, %d) done\n", va->address, va->size );
         }
@@ -233,14 +222,4 @@ void
         FastAlloc   fa
 )
 {
-    struct FastAllocatorContext * fac = (struct FastAllocatorContext *)fa;
-    wprintf(L"falloc [type=\"%s\",size=%d] total=%I64d, new=%d push=%d pop=%d\n", fac->type, fac->size, fac->total, fac->new, fac->push, fac->pop);
-
-    if ((fac->push + fac->temp) != (fac->pop + fac->new)) {
-        wprintf(L"XXXXX    falloc buffers unaccounted for: %d\n", fac->new + fac->pop - fac->push - fac->temp); getchar();
-        fac->temp = fac->new + fac->pop - fac->push;
-    } else {
-        wprintf(L"#####    falloc buffers accounted for\n");
-    }
 }
-
