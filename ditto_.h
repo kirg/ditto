@@ -15,12 +15,11 @@
 
 struct File {
 
-    struct File *       next;   /* next in bucket */
+    struct File *       sibling;
 
     wchar_t *           name;
     struct List *       path;   /* path string-list (debug) */
     struct Directory *  parent;
-    struct File *       sibling;
 
     long long int       size;
 
@@ -29,16 +28,15 @@ struct File {
 
 struct Misc {
 
-    struct Misc *       next;   /* next in bucket */
+    struct Misc *       sibling;
 
     wchar_t *           name;
     struct List *       path;   /* path string-list (debug) */
     struct Directory *  parent;
-    struct Misc *       sibling;
 };
 
 
-struct MatchDir {
+struct SimilarDir {
     int                 ditto_files;
     int                 ditto_within;
 
@@ -49,12 +47,11 @@ struct MatchDir {
 
 struct Directory {
 
-    struct Directory *  next;   /* next in bucket */
+    struct Directory *  sibling;
 
     wchar_t *           name;
     struct List *       path;   /* path string-list (debug) */
     struct Directory *  parent;
-    struct Directory *  sibling;
 
     int                 n_files;
     struct File *       files;
@@ -66,7 +63,7 @@ struct Directory {
     struct Misc *       misc;   // FIXME: links?
 
 
-    struct List *       related_dirs;
+    struct List *       similar;
 };
 
 

@@ -8,7 +8,14 @@
 
 #include <time.h>       /* clock */
 
-//#include <ntdef.h>
+
+/*
+#include <windef.h>
+#include <winnt.h>
+#include <ntdll.h>
+#include <ntdef.h>
+*/
+
 
 #ifdef __GNUC__  
 #   include <ddk/ntifs.h>   /* NtQueryDirectoryFile, etc */
@@ -24,7 +31,7 @@ typedef enum NTSTATUS {
 };
 
 typedef enum _FILE_INFORMATION_CLASS { 
-  FileDirectoryInformation      = 1,
+  FileDirectoryInformation      = 1
 } FILE_INFORMATION_CLASS, *PFILE_INFORMATION_CLASS;
 
 typedef struct _FILE_DIRECTORY_INFORMATION {
@@ -42,29 +49,23 @@ typedef struct _FILE_DIRECTORY_INFORMATION {
 } FILE_DIRECTORY_INFORMATION, *PFILE_DIRECTORY_INFORMATION;
 
 
-NTSTATUS NtQueryDirectoryFile(
-  HANDLE FileHandle,
-  HANDLE Event,
-  PVOID ApcRoutine,         /* PIO_APC_ROUTINE ApcRoutine, */
-  PVOID ApcContext,
-  PVOID IoStatusBlock,      /* PIO_STATUS_BLOCK IoStatusBlock, */
-  PVOID FileInformation,
-  ULONG Length,
-  FILE_INFORMATION_CLASS FileInformationClass,
-  BOOLEAN ReturnSingleEntry,
-  PVOID FileName,            /* PUNICODE_STRING FileName, */
-  BOOLEAN RestartScan
+NTSTATUS
+    NtQueryDirectoryFile(
+        HANDLE                    FileHandle,
+        HANDLE                    Event,
+        PVOID                     ApcRoutine,         /* PIO_APC_ROUTINE ApcRoutine, */
+        PVOID                     ApcContext,
+        PVOID                     IoStatusBlock,      /* PIO_STATUS_BLOCK IoStatusBlock, */
+        PVOID                     FileInformation,
+        ULONG                     Length,
+        FILE_INFORMATION_CLASS    FileInformationClass,
+        BOOLEAN                   ReturnSingleEntry,
+        PVOID                     FileName,            /* PUNICODE_STRING FileName, */
+        BOOLEAN                   RestartScan
 );
 
 
 #endif
-
-/*
-#include <windef.h>
-#include <winnt.h>
-#include <ntdll.h>
-#include <ntdef.h>
-*/
 
 #define MAX_PATH_BUFLEN                     (32768)
 
@@ -1560,10 +1561,28 @@ skip_dittoing:
 
 void
     fuzzy_match_dirs (
-        struct Directory *  dir
+        struct Directory *  this
 )
 {
+    struct File *       file;
+    struct Directory *  dir;
+    struct SimilarDir * similar;
 
+
+    for (file = this->files; file != NULL; file = file->sibling) {
+
+        hash( file->parent, 0 );
+
+    }
+
+    for (dir = this->dirs; dir != NULL; dir = dir->sibling) {
+
+        if (dir->similar != NULL) {
+            fuzzy_match_dirs( dir );
+        }
+
+        hash( dir, 1 );
+    }
 }
 
 void
