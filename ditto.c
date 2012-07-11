@@ -315,7 +315,7 @@ wprintf(L"scan complete: %d dirs, %d files, %d links\n", count( all_dirs ), coun
 
     for (scan_dir = next( iter ); scan_dir != NULL; scan_dir = next( iter )) {
 
-        //print_tree( &scan_dir->dir );
+        // print_tree( &scan_dir->dir );
 
     }
 
@@ -369,7 +369,7 @@ int
     //struct List *   path;
 
 //wprintf( L"traverse: %s (%d)\n", build_tree_path, build_tree_path_len );
-//wprintf(L"\r%d dirs, %d files ", count( all_dirs ), count( all_files ) );
+wprintf(L"\r%d dirs, %d files ", count( all_dirs ), count( all_files ) );
 //print_StringList( this->path, 256 );
 //wprintf(L"     ");
 
@@ -660,9 +660,7 @@ void
         iter = iterator( scan_paths );
 
         for ( scan_dir = next( iter ); scan_dir != NULL; scan_dir = next( iter )) {
-
             print_tree( (struct Directory *)scan_dir );
-
         }
 
         done( iter );
@@ -1451,25 +1449,24 @@ wprintf(L"\rdittoing bucket (num=%d), size=%I64d, count=%d, offs=%I64d          
 
                 ffree( fa_Buffer, buf );
 
-                // push( retry_fzbuckets, fzbucket ); /* push to retry bucket */
-
-                push( error_files, file );
-
-                ++fzbucket_error;
-
-                // break;
-
+                if (fzbuckets_list != retry_fzbuckets) {
+                    ++fzbucket_error;
+                    push( retry_fzbuckets, fzbucket ); /* push to retry bucket */
+wprintf(L"will retry later\n");
+                    break; /* skip bucket -> to retry later */
+                } else {
+wprintf(L"error on retry: %s\n", path);
+                    push( error_files, file );
+                }
             }
         }
 
         done( iter );
 
-/*
         if (fzbucket_error > 0) {
             wprintf(L"skipping bucket\n");
             continue;
         }
-*/
 
 
         /* finished processing files in this fzbucket; we don't need the fzbucket any more */
