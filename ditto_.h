@@ -38,6 +38,15 @@ struct Misc {
 };
 
 
+struct MatchDir {
+    int                 ditto_files;
+    int                 ditto_within;
+
+    struct Directory *  dir;
+};
+
+
+
 struct Directory {
 
     struct Directory *  next;   /* next in bucket */
@@ -55,6 +64,9 @@ struct Directory {
 
     int                 n_misc; // FIXME: n_links?
     struct Misc *       misc;   // FIXME: links?
+
+
+    struct List *       related_dirs;
 };
 
 

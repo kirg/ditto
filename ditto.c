@@ -8,11 +8,55 @@
 
 #include <time.h>       /* clock */
 
+//#include <ntdef.h>
 
 #ifdef __GNUC__  
-#   include <ddk/ntifs.h>   /* NtQueryDirectoryFile */
+#   include <ddk/ntifs.h>   /* NtQueryDirectoryFile, etc */
 #else
-#   include <ntifs.h>
+
+typedef enum BOOLEAN {
+    BOOLEAN_TRUE    = 1,
+    BOOLEAN_FALSE   = 0
+};
+
+typedef enum NTSTATUS {
+    STATUS_SUCCESS = 0
+};
+
+typedef enum _FILE_INFORMATION_CLASS { 
+  FileDirectoryInformation      = 1,
+} FILE_INFORMATION_CLASS, *PFILE_INFORMATION_CLASS;
+
+typedef struct _FILE_DIRECTORY_INFORMATION {
+  ULONG         NextEntryOffset;
+  ULONG         FileIndex;
+  LARGE_INTEGER CreationTime;
+  LARGE_INTEGER LastAccessTime;
+  LARGE_INTEGER LastWriteTime;
+  LARGE_INTEGER ChangeTime;
+  LARGE_INTEGER EndOfFile;
+  LARGE_INTEGER AllocationSize;
+  ULONG         FileAttributes;
+  ULONG         FileNameLength;
+  WCHAR         FileName[1];
+} FILE_DIRECTORY_INFORMATION, *PFILE_DIRECTORY_INFORMATION;
+
+
+NTSTATUS NtQueryDirectoryFile(
+  HANDLE FileHandle,
+  HANDLE Event,
+  PVOID ApcRoutine,         /* PIO_APC_ROUTINE ApcRoutine, */
+  PVOID ApcContext,
+  PVOID IoStatusBlock,      /* PIO_STATUS_BLOCK IoStatusBlock, */
+  PVOID FileInformation,
+  ULONG Length,
+  FILE_INFORMATION_CLASS FileInformationClass,
+  BOOLEAN ReturnSingleEntry,
+  PVOID FileName,            /* PUNICODE_STRING FileName, */
+  BOOLEAN RestartScan
+);
+
+
 #endif
 
 /*
@@ -318,21 +362,28 @@ int
 
     HANDLE  hD;
 
+    struct File *       files_tail;
+    struct Directory *  dirs_tail;
+    struct Misc *       misc_tail;
+
     //struct List *   path;
 
 //wprintf( L"traverse: %s (%d)\n", build_tree_path, build_tree_path_len );
-wprintf(L"\r%d dirs, %d files ", count( all_dirs ), count( all_files ) );
+//wprintf(L"\r%d dirs, %d files ", count( all_dirs ), count( all_files ) );
 //print_StringList( this->path, 256 );
 //wprintf(L"     ");
 
     this->n_files   = 0;
     this->files     = NULL;
+    files_tail      = NULL;
 
     this->n_dirs    = 0;
     this->dirs      = NULL;
+    dirs_tail       = NULL;
 
     this->n_misc    = 0;
     this->misc      = NULL;
+    misc_tail       = NULL;
 
 
     /* using pre-setup 'build_tree_path' and 'build_tree_path_len' globals */
@@ -404,9 +455,20 @@ wprintf(L"\r%d dirs, %d files ", count( all_dirs ), count( all_files ) );
 
                         dir->parent     = this;
 
-                        /* add to child-dir list */
-                        dir->sibling    = this->dirs;
-                        this->dirs      = dir;
+                        /* 'queue' to child-dir list (maintain sort order) */
+
+                        dir->sibling    = NULL;
+
+                        if (this->dirs == NULL) {
+                            this->dirs = dir;
+                        }
+
+                        if (dirs_tail != NULL) {
+                            dirs_tail->sibling = dir;
+                        }
+
+                        dirs_tail = dir;
+
                         ++this->n_dirs;
 
                         /* add to all_dirs bucket */
@@ -447,9 +509,20 @@ wprintf(L"\r%d dirs, %d files ", count( all_dirs ), count( all_files ) );
 
                         misc->parent    = this;
 
-                        /* add to child-misc list */
-                        misc->sibling   = this->misc;
-                        this->misc      = misc;
+                        /* 'queue' to child-misc list (maintain sort order) */
+
+                        misc->sibling   = NULL;
+
+                        if (this->misc == NULL) {
+                            this->misc = misc;
+                        }
+
+                        if (misc_tail != NULL) {
+                            misc_tail->sibling = misc;
+                        }
+
+                        misc_tail = misc;
+
                         ++this->n_misc;
 
                         /* add to all_misc bucket */
@@ -490,14 +563,24 @@ wprintf(L"\r%d dirs, %d files ", count( all_dirs ), count( all_files ) );
 
                         file->parent    = this;
 
-                        /* add to child-files list */
-                        file->sibling   = this->files;
-                        this->files     = file;
-                        ++this->n_files;
 
                         file->size = (long long int)fdi->EndOfFile.QuadPart;
                         file->context = NULL;
 
+                        /* 'queue' to child-files list (maintain sort order) */
+                        file->sibling   = NULL;
+
+                        if (this->files == NULL) {
+                            this->files = file;
+                        }
+
+                        if (files_tail != NULL) {
+                            files_tail->sibling = file;
+                        }
+
+                        files_tail = file;
+
+                        ++this->n_files;
                         /* hash into approriate filesize bucket */
                         hash_file( file );
 
@@ -638,10 +721,12 @@ void
         void *          buffer,
         int             len,
         unsigned int    offset,
-        const wchar_t * prefix
+        const wchar_t * prefix,
+        unsigned int    mark_offset,
+        const wchar_t   marker
 )
 {
-    unsigned char * buf = (unsigned char *)buffer;
+    unsigned char * buf = (unsigned char *)buffer + offset;
     static const int radix = 16; /* default radix */
 
     unsigned int i, j;
@@ -649,10 +734,12 @@ void
     for (i = 0; i < len; ++i) {
         if ((i % 16) == 0) {
             wprintf( L"%s", prefix );
-            wprintf( L"%04X: ", offset + i - (i % 16) );
+            wprintf( L"%04X:%c", offset + i - (i % 16),
+                ((mark_offset != 0) && ((i + offset) == mark_offset)) ? marker : L' ' );
         }
 
-        wprintf( (radix == 10) ? L"%3d " : L"%02x ", buf[i] );
+        wprintf( (radix == 10) ? L"%3d%c" : L"%02x%c", buf[offset+i],
+                ((mark_offset != 0) && ((i + 1 + offset) == mark_offset)) ? marker : L' ' );
 
         if ((i % 4) == 3) {
             wprintf( L" " );
@@ -662,7 +749,7 @@ void
             wprintf( L"| " );
 
             for (j = i - 15; j <= i; ++j) {
-                wprintf( L"%c", ((buf[j] < ' ') /* || (buf[j] > '~') */) ? '.' : buf[j] );
+                wprintf( L"%c", ((buf[offset+j] < ' ') /* || (buf[offset+j] > '~') */) ? '.' : buf[offset+j] );
             }
 
             if (i != (len -1)) {
@@ -690,7 +777,7 @@ void
     }
 
     for (j = i - (i % 16); j < len; ++j) {
-        wprintf( L"%c", ((buf[j] < ' ') || (buf[j] > '~')) ? '.' : buf[j] );
+        wprintf( L"%c", ((buf[offset+j] < ' ') || (buf[offset+j] > '~')) ? '.' : buf[offset+j] );
     }
 
     wprintf( L"\n" );
@@ -937,6 +1024,16 @@ void
 }
 
 
+int hash_num_files;
+int hash_num_fzbuckets;
+
+void
+    hash_stats (
+        void
+)
+{
+}
+
 void
     hash_file (
         struct File *   file
@@ -973,10 +1070,15 @@ void
         fzbucket->files = new_List( );
 
         insert( hash_bucket, iter, fzbucket );
+
+        ++hash_num_fzbuckets;
     }
 
     done( iter );
 
+    enqueue( fzbucket->files, file );
+
+    ++hash_num_files;
 /*
 {
     void print_full_filename( struct File * file );
@@ -987,7 +1089,6 @@ void
 }
 */
 
-    enqueue( fzbucket->files, file );
 }
 
 
@@ -1273,9 +1374,12 @@ wprintf(L"\rdittoing bucket (num=%d), size=%I64d, count=%d, offs=%I64d          
 
                         /* this is for the (very) uncommon case where the checksum is the same, but the buffers differ */
 
-{ wprintf( L"\n## checksum mismatch sum=%d offs=%d (size=%I64d) ##\n", checksum, diff_at, size );
-  print_buffer(buf+diff_at-32,         256, diff_at-32, L"BUF "); wprintf(L"--\n");
-  print_buffer(preDit->buf+diff_at-32, 256, diff_at-32, L"PRE "); getchar(); }
+{ int print_offs, print_len;
+  print_offs = (diff_at < 32) ? 0 : diff_at-32;
+  print_len  = ((print_offs + 256) > len) ? (len - print_offs) : 256;
+  wprintf( L"\n## checksum mismatch sum=0x%08X offs=0x%X (size=%I64d) ##\n", checksum, diff_at, size );
+  print_buffer(buf,         print_len, print_offs, L"BUF ", diff_at, L'*' ); wprintf(L"--\n");
+  print_buffer(preDit->buf, print_len, print_offs, L"PRE ", diff_at, L'*' ); /* getchar(); */ }
 
                         diff_at2 = 0;
 
@@ -1386,6 +1490,8 @@ skip_dittoing:
             - push back rest of the buckets back into the process list after updating 'offs' ( requires more processing )
          */
 
+        offs = offs + buf_size; /* compute offs to compare next */
+
         preDit = preDit_head;
 
         while (preDit != NULL) {
@@ -1401,49 +1507,42 @@ skip_dittoing:
 
                 delete_List( preDit->files );
 
-            } else {
+            } else if (offs >= size) { /* DITTO file : these files match byte-to-byte */
 
-                long long int   new_offs;
+                /* close open file handles */
 
-                new_offs = offs + buf_size;
+                iter = iterator( preDit->files ); 
 
-                if (new_offs >= size) { /* DITTO file : these files match byte-to-byte */
+                for (file = next( iter ); file != NULL; file = next( iter )) {
+                    CloseHandle( file->context );
+                    file->context = NULL;
+                }
 
-                    /* close open file handles */
+                done( iter );
 
-                    iter = iterator( preDit->files ); 
+                push( ditto_buckets, preDit->files );
 
-                    for (file = next( iter ); file != NULL; file = next( iter )) {
-                        CloseHandle( file->context );
-                        file->context = NULL;
-                    }
-
-                    done( iter );
-
-                    push( ditto_buckets, preDit->files );
-
-                    total_ditto_count   += preDit->files->count;
-                    total_ditto_size    += size * (preDit->files->count - 1); // redundant bytes
+                total_ditto_count   += preDit->files->count;
+                total_ditto_size    += size * (preDit->files->count - 1); // redundant bytes
 
 //wprintf(L"\rditto #%d count=%d, size=%I64d (ticks=%d) [total count=%I64d, size=%I64d]                       ",
 //ditto_buckets->count, preDit->files->count, size, clock()-t0, total_ditto_count, total_ditto_size);
 //print_list(preDit->files, print_File, 50);
 //wprintf(L"--\n");
 
-                } else { /* partially matched : push a new FilesizeBucket to compare next set of bytes */
+            } else { /* partially matched : push a new FilesizeBucket to compare next set of bytes */
 
-                    /* push a new FilesizeBucket to compare next set of bytes */
+                /* push a new FilesizeBucket to compare next set of bytes */
 
-                    struct FilesizeBucket * fzbucket_new;
+                struct FilesizeBucket * fzbucket_new;
 
-                    fzbucket_new = falloc( fa_FilesizeBucket, sizeof(struct FilesizeBucket) ); /* FIXME: check for failure */
+                fzbucket_new = falloc( fa_FilesizeBucket, sizeof(struct FilesizeBucket) ); /* FIXME: check for failure */
 
-                    fzbucket_new->offs   = new_offs;
-                    fzbucket_new->size   = size;
-                    fzbucket_new->files  = preDit->files;
+                fzbucket_new->offs   = offs;
+                fzbucket_new->size   = size;
+                fzbucket_new->files  = preDit->files;
 
-                    push( partial_fzbuckets, fzbucket_new );
-                }
+                push( partial_fzbuckets, fzbucket_new );
             }
 
             ffree( fa_Buffer, preDit->buf );
@@ -1458,6 +1557,16 @@ skip_dittoing:
             }
         }
     }
+}
+
+
+
+void
+    fuzzy_match_dirs (
+        struct Directory *  dir
+)
+{
+
 }
 
 void
