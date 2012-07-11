@@ -772,7 +772,7 @@ void
         wprintf( L" " );
     }
 
-    if (j < len) {
+    if ((i - (i % 16)) < len) {
         wprintf( L"| " );
     }
 
