@@ -44,5 +44,10 @@ void
         void
 );
 
+void
+    ditto_dirs (
+        void
+);
+
 #endif
 

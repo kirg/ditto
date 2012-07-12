@@ -5,6 +5,8 @@
 
 #include "list.h"
 
+#include <windows.h>
+
 
 #ifdef _MSC_VER
 #   ifndef inline
@@ -23,7 +25,9 @@ struct File {
 
     long long int       size;
 
-    void *              context;
+    /* below two could be made a "union" */
+    HANDLE              hF;
+    struct List *       bucket;
 };
 
 struct Misc {
@@ -37,10 +41,9 @@ struct Misc {
 
 
 struct SimilarDir {
-    int                 ditto_files;
-    int                 ditto_within;
-
     struct Directory *  dir;
+
+    int                 score;
 };
 
 
@@ -63,6 +66,7 @@ struct Directory {
     struct Misc *       misc;   // FIXME: links?
 
 
+    int                 self_score; 
     struct List *       similar;
 };
 

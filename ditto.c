@@ -328,6 +328,8 @@ wprintf(L"scan complete: %d dirs, %d files, %d links\n", count( all_dirs ), coun
 
 //wprintf(L"enter to find ditto files .."); getchar();
     ditto_files( );
+
+    ditto_dirs( );
 }
 
 
@@ -565,8 +567,10 @@ wprintf(L"\r%d dirs, %d files ", count( all_dirs ), count( all_files ) );
                         file->parent    = this;
 
 
-                        file->size = (long long int)fdi->EndOfFile.QuadPart;
-                        file->context = NULL;
+                        file->size  = (long long int)fdi->EndOfFile.QuadPart;
+
+                        file->hF        = NULL;
+                        file->bucket    = NULL;
 
                         /* 'queue' to child-files list (maintain sort order) */
                         file->sibling   = NULL;
@@ -1249,23 +1253,41 @@ void
 
 wprintf(L"\rdittoing bucket (num=%d), size=%I64d, count=%d, offs=%I64d          ", ditto_buckets->count, size, fzbucket->files->count, offs);
 
-        if (fzbucket->files->count == 1) {
-            break; /* skip buckets with one file */
-        }
-
         if (size < MIN_SIZE) {
-            break; /* skip buckets with files less than MIN_SIZE */
+
+            /* file = (struct File *)fzbucket->files->head->data;
+            enqueue( unique_files, file ); */
+
+            delete_List( fzbucket->files );
+            ffree( fa_FilesizeBucket, fzbucket );
+
+            continue; /* skip buckets with files less than MIN_SIZE */
         }
 
-        preDit_head         = NULL;
+        if (fzbucket->files->count == 1) {
 
-        //buf_size            = size - ((size + BUF_SIZE_ALIGN) / BUF_SIZE_ALIGN);
-        buf_size            = BUF_SIZE; /* FIXME: say if (files->count == 2) use a larger buf-size? */
-        li_offs.QuadPart    = offs;
+            file = (struct File *)fzbucket->files->head->data;
+            enqueue( unique_files, file );
 
+            delete_List( fzbucket->files );
+            ffree( fa_FilesizeBucket, fzbucket );
+
+            continue; /* skip buckets with one file */
+        }
 
         if (offs >= size) {
+
             /* we would really get here only for 0-byte files */
+
+            iter = iterator( fzbucket->files ); 
+
+            for (file = next( iter ); file != NULL; file = next( iter )) {
+                CloseHandle( file->hF );
+                file->hF        = NULL;
+                file->bucket    = fzbucket->files; /* points to the ditto bucket */
+            }
+
+            done( iter );
 
             push( ditto_buckets, fzbucket->files );
 
@@ -1277,15 +1299,23 @@ wprintf(L"\rdittoing bucket (num=%d), size=%I64d, count=%d, offs=%I64d          
 //print_list(fzbucket->files, print_File, 50);
 //wprintf(L"--\n");
 
-            goto skip_dittoing;
+            ffree( fa_FilesizeBucket, fzbucket );
+
+            continue;
         }
+
+
+        preDit_head         = NULL;
+
+        //buf_size            = size - ((size + BUF_SIZE_ALIGN) / BUF_SIZE_ALIGN);
+        buf_size            = BUF_SIZE; /* FIXME: say if (files->count == 2) use a larger buf-size? */
+        li_offs.QuadPart    = offs;
 
 
         iter = iterator( fzbucket->files ); 
 
         for (file = next( iter ); file != NULL; file = next( iter )) {
 
-            HANDLE  hF;
             char *  buf;
             int     len;
 
@@ -1295,27 +1325,24 @@ wprintf(L"\rdittoing bucket (num=%d), size=%I64d, count=%d, offs=%I64d          
 
             DWORD   bytes_read;
 
-            hF = (HANDLE)file->context;
-
-            if (hF == NULL || hF == INVALID_HANDLE_VALUE) {
+            if (file->hF == NULL || file->hF == INVALID_HANDLE_VALUE) {
 
                 wchar_t *   path = full_filename( file ); /* FIXME: free path buffer */
 
                 /* FIXME: use read-through/no-buffering?! */
-                hF = CreateFile( path, GENERIC_READ,
+                file->hF = CreateFile( path, GENERIC_READ,
                                 FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                                     NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL );
 
-                file->context = (void *)hF;
-
+                ffree( fa_String, path );
             }
 
             buf = falloc( fa_Buffer, buf_size );
             len = buf_size;
 
-            if ((hF != INVALID_HANDLE_VALUE) && (buf != NULL) && 
-                    SetFilePointerEx( hF, li_offs, NULL, FILE_BEGIN ) &&
-                        ReadFile( hF, buf, buf_size, &bytes_read, NULL )) {
+            if ((file->hF != INVALID_HANDLE_VALUE) && (buf != NULL) && 
+                    SetFilePointerEx( file->hF, li_offs, NULL, FILE_BEGIN ) &&
+                        ReadFile( file->hF, buf, buf_size, &bytes_read, NULL )) {
 
                 len = bytes_read; /* FIXME: take care of len < buf_size in ditto-ing */
 
@@ -1476,8 +1503,6 @@ wprintf(L"error on retry: %s\n", path);
         ffree( fa_FilesizeBucket, fzbucket );
 
 
-skip_dittoing:
-
         /*
             now go through all of the 'preDit' buckets and:
 
@@ -1498,8 +1523,9 @@ skip_dittoing:
 
                 file = (struct File *)preDit->files->head->data;
 
-                CloseHandle( file->context );
-                file->context = NULL;
+                CloseHandle( file->hF );
+                file->hF        = NULL;
+                file->bucket    = NULL; /* = unique_files ? */
 
                 enqueue( unique_files, file );
 
@@ -1512,8 +1538,9 @@ skip_dittoing:
                 iter = iterator( preDit->files ); 
 
                 for (file = next( iter ); file != NULL; file = next( iter )) {
-                    CloseHandle( file->context );
-                    file->context = NULL;
+                    CloseHandle( file->hF );
+                    file->hF        = NULL;
+                    file->bucket    = preDit->files; /* points to ditto bucket */
                 }
 
                 done( iter );
@@ -1559,6 +1586,157 @@ skip_dittoing:
 
 
 
+wchar_t *
+    full_path_dir (
+        struct Directory * dir
+)
+{
+    struct List *       list;
+    struct Directory *  p;
+    wchar_t *           name;
+    int                 len;
+
+    list = new_List( );
+
+    push( list, dir->name );
+    len = wcslen(dir->name);
+
+    for (p = dir->parent; p != NULL; p = p->parent) {
+        push( list, p->name );
+        len += wcslen(p->name);
+    }
+
+    name = falloc( fa_String, sizeof(wchar_t) * (len + 1) );
+
+    if (name) {
+        struct Iter *   iter;
+        wchar_t *       component;
+        int             end;
+
+        end = 0;
+
+        iter = iterator( list );
+
+        for (component = next( iter ); component != NULL; component = next( iter )) {
+            wcsncpy( name+end, component, len-end );
+            end += wcslen( component );
+        }
+
+        name[end] = 0;
+
+        done( iter );
+    }
+
+    return name;
+}
+
+void
+    print_similardir (
+        void *  d
+)
+{
+    struct SimilarDir * similar = (struct SimilarDir *)d;
+    wchar_t *   path;
+
+    path = full_path_dir( similar->dir );
+    wprintf( L"(%8p, %8p): %8d -> %s\n", similar, similar->dir, similar->score, path );
+    ffree( fa_String, path );
+}
+
+
+
+void
+    print_dirsimlist (
+        struct SimilarDir * sd
+)
+{
+    wprintf(L"(%p = %p) ", sd, sd->dir);
+}
+
+
+
+void
+    hash_dir (
+        struct Directory *  this,
+        struct Directory *  dir,
+        int                 score
+)
+{
+    struct Iter *       iter;
+    struct SimilarDir * dir_similar;
+
+    if (dir == NULL) {
+
+        return;
+
+/*  } else if (dir == this) {
+
+        this->self_score += score;
+        return;
+*/
+    } else {
+
+//print_list( this->similar, (print_func)print_dirsimlist, 100); wprintf(L"\n");
+
+        iter = iterator( this->similar );
+
+        for (dir_similar = next( iter );
+                (dir_similar != NULL) && (dir > dir_similar->dir);
+                    dir_similar = next( iter ));
+
+        done( iter );
+
+        if ((dir_similar == NULL) || (dir != dir_similar->dir)) {
+
+void * t = dir_similar;
+
+            dir_similar = malloc( sizeof(struct SimilarDir) );
+
+//wprintf(L"new dir_similar (this=%p, dir=%p, found=%p, new=%p) score=%d\n", this, dir, t, dir_similar, score);
+
+            if (dir_similar == NULL) {
+                wprintf( L"alloc SimilarDir failed\n" );
+                return;
+            }
+
+            dir_similar->dir    = dir;
+            dir_similar->score  = score;
+
+            insert( this->similar, iter, dir_similar );
+
+        } else {
+
+            dir_similar->score += score;
+
+//wprintf(L"matching dir_similar (this=%p, dir=%p, found=%p) score=%d\n", this, dir, dir_similar, score);
+        }
+//print_list( this->similar, (print_func)print_dirsimlist, 100); wprintf(L"\n\n");
+
+    }
+
+
+#if 0
+{
+    wchar_t * path0;
+    wchar_t * path1;
+    path0 = full_path_dir( this );
+    path1 = full_path_dir( dir );
+//wprintf(L"hash dir %4d: %s => %s\n", dir_similar->score, path0, path1 );
+}
+#endif
+
+}
+
+int
+    compare_SimilarDir (
+        struct SimilarDir * left,
+        struct SimilarDir * right
+)
+{
+    return (left->score > right->score) ? -1 : (left->score == right->score) ? 0 : 1;
+}
+
+
 void
     fuzzy_match_dirs (
         struct Directory *  this
@@ -1566,23 +1744,46 @@ void
 {
     struct File *       file;
     struct Directory *  dir;
-    struct SimilarDir * similar;
 
+    this->similar = new_List( );
 
     for (file = this->files; file != NULL; file = file->sibling) {
 
-        hash( file->parent, 0 );
+        struct Iter *   iter;
+        struct File *   file_ditto;
 
+        if (file->bucket != NULL) {
+            iter = iterator( file->bucket );
+
+            for (file_ditto = next( iter ); file_ditto != NULL; file_ditto = next( iter )) {
+                hash_dir( this, file_ditto->parent, 1 );
+            }
+
+            done( iter );
+        }
     }
 
     for (dir = this->dirs; dir != NULL; dir = dir->sibling) {
 
-        if (dir->similar != NULL) {
+        struct Iter *       iter;
+        struct SimilarDir * dir_similar;
+
+        if (dir->similar == NULL) {
             fuzzy_match_dirs( dir );
         }
 
-        hash( dir, 1 );
+        iter = iterator( dir->similar );
+
+        for (dir_similar = next( iter );
+                dir_similar != NULL;
+                    dir_similar = next( iter )) {
+            hash_dir( this, dir_similar->dir->parent, dir_similar->score );
+        }
+
+        done( iter );
     }
+
+    merge_sort( this->similar, (compare_func)compare_SimilarDir );
 }
 
 void
@@ -1590,4 +1791,31 @@ void
         void
 )
 {
+    struct Iter *       iter;
+    struct Directory *  dir;
+
+    wprintf(L"dittoing dirs ..\n");
+
+    iter = iterator( all_dirs );
+
+    for (dir = next( iter ); dir != NULL; dir = next( iter )) {
+
+wchar_t * path = full_path_dir( dir );
+
+        if (dir->similar == NULL) {
+
+//wprintf( L"fuzzy matching dir: %s\n", path );
+
+            fuzzy_match_dirs( dir );
+
+        }
+
+wprintf(L"\nfuzzy matches for \"%s\" (%p) count=%d ditto_score=%d:\n", path, dir, count( dir->similar ), dir->self_score);
+print_list( dir->similar, print_similardir, 5 );
+//getchar();
+
+    }
+
+    done( iter );
 }
+

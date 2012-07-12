@@ -27,9 +27,17 @@ struct Node {
 };
 
 
+/*
 struct Iter {
     struct Node *   current;
     struct Node *   previous;
+};
+*/
+
+struct Iter {
+    struct Node *   current;
+    struct Node *   previous;
+    struct List *   list;
 };
 
 
@@ -70,7 +78,7 @@ struct Node *
         void
 )
 {
-    struct Node * node = falloc( fa_List, sizeof(struct Node) );
+    struct Node * node = falloc( fa_Node, sizeof(struct Node) );
 
     if (node) {
         node->next = 0;
@@ -148,9 +156,16 @@ struct Iter *
 {
     struct Iter * iter = falloc( fa_List, sizeof(struct Iter) );
 
+/*
     if (iter != NULL) {
         iter->current   = list->head;
         iter->previous  = NULL;
+    }
+*/
+    if (iter != NULL) {
+        iter->current   = NULL;
+        iter->previous  = NULL;
+        iter->list      = list;
     }
 
     return iter;
@@ -164,6 +179,7 @@ void *
 {
     void *  data;
 
+/*
     if (iter != NULL && iter->current != NULL) {
         data            = iter->current->data;
 
@@ -173,6 +189,21 @@ void *
     } else {
         data = NULL;
     }
+*/
+
+    if (iter != NULL) {
+
+        iter->previous = iter->current;
+
+        iter->current = (iter->current == NULL) ?
+                            iter->list->head : iter->current->next;
+
+        data = (iter->current == NULL) ?  NULL : iter->current->data;
+
+    } else {
+        data = NULL;
+    }
+
 
     return data;
 }
