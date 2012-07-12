@@ -3,8 +3,6 @@
 
 #include <string.h>
 
-#include "list.h"
-
 #ifdef _MSC_VER
 #   ifndef inline
 #       define inline  __inline
@@ -12,42 +10,37 @@
 #endif
 
 
-void ditto_init( void );
-
-void ditto_cleanup( void );
-
-
 void
-    include_dir (
+    ditto_init (
+        void
+);
+
+
+
 #ifdef __GNUC__  
+/* mingw passes in 'char *' argv */
+void
+    ditto_dir (
         char *      arg
+);
 #else
+void
+    ditto_dir (
         wchar_t *   arg
+);
 #endif
-);
 
-
-void scan( void );
 
 void
-    print_File (
-        void *  file
-);
-
-void
-    file_dittoer (
-        struct List *   fzbuckets_list
-);
-
-void
-    ditto_files (
+    ditto_start (
         void
 );
 
 void
-    ditto_dirs (
+    ditto_cleanup (
         void
 );
+
 
 #endif
 

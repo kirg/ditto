@@ -27,17 +27,10 @@ struct Node {
 };
 
 
-/*
 struct Iter {
     struct Node *   current;
     struct Node *   previous;
-};
-*/
-
-struct Iter {
-    struct Node *   current;
-    struct Node *   previous;
-    struct List *   list;
+    struct List *   list;       /* used by 'next()' to find head */
 };
 
 
@@ -149,26 +142,12 @@ void *
 {
     void *  data;
 
-/*
-    if (iter != NULL && iter->current != NULL) {
-        data            = iter->current->data;
-
-        iter->previous  = iter->current;
-        iter->current   = iter->current->next;
-
-    } else {
-        data = NULL;
-    }
-*/
-
     if (iter != NULL) {
 
-        iter->previous = iter->current;
+        iter->previous  = iter->current;
+        iter->current   = (iter->current == NULL) ? iter->list->head : iter->current->next;
 
-        iter->current = (iter->current == NULL) ?
-                            iter->list->head : iter->current->next;
-
-        data = (iter->current == NULL) ?  NULL : iter->current->data;
+        data = (iter->current == NULL) ?  NULL/* EOL */: iter->current->data;
 
     } else {
         data = NULL;
@@ -203,7 +182,7 @@ void
                 list->tail = node;
             }
 
-        } else {
+        } else /* if (iter->current != NULL) */ {
 
             node->next  = list->head;
             list->head  = node;

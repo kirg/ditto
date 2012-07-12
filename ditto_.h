@@ -125,8 +125,30 @@ void
 );
 
 void
-    hash_file (
+    ditto_files (
+        void
+);
+
+void
+    ditto_dirs (
+        void
+);
+
+
+void
+    fzhash_init (
+        void
+);
+
+void
+    fzhash_file (
         struct File *   file
+);
+
+
+void
+    fzhash_cleanup (
+        void
 );
 
 #endif

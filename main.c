@@ -25,23 +25,10 @@ int
         ditto_init( );
 
         for (i = 1; i < argc; ++i) {
-            include_dir( argv[i] );
+            ditto_dir( argv[i] );
         }
 
-        scan( );
-
-        {
-            void
-                dump_hash (
-                    long long int min_size
-            );
-
-#if 1 //dbg
-          //print_tree( NULL );
-          //list_files( NULL );
-          //dump_hash( 0 );
-#endif
-        }
+        ditto_start( );
 
         ditto_cleanup( );
 

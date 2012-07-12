@@ -101,14 +101,8 @@ void
         void
 )
 {
-    void
-        hashmap_init (
-            void
-    );
-
     falloc_init( );
     list_init( );
-    hashmap_init( );
 
     fa_String       = new_falloc( L"String", 0 );
     fa_File         = new_falloc( L"File", sizeof(struct File) );
@@ -127,34 +121,41 @@ void
         void
 )
 {
-    void
-        hashmap_cleanup (
-            void
-    );
-
     delete_List( all_misc );
     delete_List( all_dirs );
     delete_List( all_files );
 
-    /* FIXME: free(scan_dir); */
+    {
+        struct Iter *           iter;
+        struct ScanDirectory *  scan_dir;
 
-    delete_List( scan_paths );
+        iter = iterator( scan_paths );
+
+        for (scan_dir = next( iter );
+                scan_dir != NULL;
+                    scan_dir = next( iter )) {
+            free( scan_dir );
+        }
+
+        done( iter );
+
+        delete_List( scan_paths );
+    }
 
     delete_falloc( fa_Directory );
     delete_falloc( fa_File );
     delete_falloc( fa_String );
 
-    hashmap_cleanup( );
     list_cleanup( );
     falloc_cleanup( );
 }
 
 void
-    include_dir (
+    ditto_dir (
 #ifdef __GNUC__  
-        char *      argA
+        char *      dirA
 #else
-        wchar_t *   arg
+        wchar_t *   dir
 #endif
 )
 {
@@ -171,22 +172,22 @@ void
 
 #ifdef __GNUC__  
 
-    wchar_t *   arg;
+    wchar_t *   dir;
 
 
-    len = strlen(argA);
+    len = strlen(dirA);
 
-    arg = malloc( sizeof(wchar_t) * (len + 1) );
+    dir = malloc( sizeof(wchar_t) * (len + 1) );
 
-    if (arg == NULL) {
+    if (dir == NULL) {
         return;
     }
 
     for (i = 0; i < len; ++i) {
-        arg[i] = argA[i];
+        dir[i] = dirA[i];
     }
 
-    arg[len] = 0;
+    dir[len] = 0;
 
 #endif
 
@@ -197,7 +198,7 @@ void
         goto exit;
     }
 
-    len = GetFullPathName( arg, sizeof(wchar_t) * MAX_PATH_BUFLEN, buf, NULL );
+    len = GetFullPathName( dir, sizeof(wchar_t) * MAX_PATH_BUFLEN, buf, NULL );
 
     if (len == 0 || len > (MAX_PATH_BUFLEN - 1)) {
         wprintf( L"error allocating buffer for path-name (gle=%d)\n", GetLastError( ) );
@@ -269,8 +270,8 @@ exit:
     }
 
 #ifdef __GNUC__  
-    if (arg != NULL) {
-        free( arg );
+    if (dir != NULL) {
+        free( dir );
     }
 #endif
 
@@ -278,13 +279,15 @@ exit:
 
 
 void
-    scan (
+    ditto_start (
         void
 )
 {
     struct Iter *           iter;
     struct ScanDirectory *  scan_dir;
-int t0; /* clock */
+    int t0; /* clock */
+
+    fzhash_init( );
 
     fdi_buf = malloc( FILE_DIRECTORY_INFORMATION_BUFSIZE );
 
@@ -297,32 +300,38 @@ int t0; /* clock */
 
     for (scan_dir = next( iter ); scan_dir != NULL; scan_dir = next( iter )) {
 
-wprintf(L"scanning \"%s\"\n", scan_dir->dir.name);
-t0=clock();
+        wprintf(L"scanning \"%s\"\n", scan_dir->dir.name);
+        t0=clock();
 
         wcsncpy( build_tree_path, scan_dir->dir.name, MAX_PATH_BUFLEN );
         build_tree_path_len = wcslen( build_tree_path );
 
         build_tree( &scan_dir->dir );
 
-wprintf(L"\rdone [dirs=%I64d, files=%I64d, misc=%I64d] (%d ticks)                                                    \n",
-    scan_dir->dir.n_all_dirs, scan_dir->dir.n_all_files, scan_dir->dir.n_all_misc, clock()-t0);
+        wprintf(L"\rdone [dirs=%I64d, files=%I64d, misc=%I64d] (%d ticks)                                                    \n",
+            scan_dir->dir.n_all_dirs, scan_dir->dir.n_all_files, scan_dir->dir.n_all_misc, clock()-t0);
 
     }
 
     done( iter );
 
-wprintf(L"scan complete: %d dirs, %d files, %d links\n", count( all_dirs ), count( all_files ), count( all_misc ));
+    wprintf(L"scan complete: %d dirs, %d files, %d links\n", count( all_dirs ), count( all_files ), count( all_misc ));
 
-    iter = iterator( scan_paths );
 
-    for (scan_dir = next( iter ); scan_dir != NULL; scan_dir = next( iter )) {
+#if 0
+    {
 
-        // print_tree( &scan_dir->dir );
+        iter = iterator( scan_paths );
 
+        for (scan_dir = next( iter ); scan_dir != NULL; scan_dir = next( iter )) {
+
+            // print_tree( &scan_dir->dir );
+
+        }
+
+        done( iter );
     }
-
-    done( iter );
+#endif
 
 // wprintf(L"files: %d files\n", count( all_files ));
 // list_files( all_files );
@@ -331,6 +340,8 @@ wprintf(L"scan complete: %d dirs, %d files, %d links\n", count( all_dirs ), coun
 //wprintf(L"enter to find ditto files .."); getchar();
     ditto_files( );
 
+    fzhash_cleanup( );
+
     ditto_dirs( );
 }
 
@@ -338,7 +349,7 @@ wprintf(L"scan complete: %d dirs, %d files, %d links\n", count( all_dirs ), coun
 
 void
     print_String (
-        void * data
+        wchar_t * data
 )
 {
     wprintf(L"%s", data);
@@ -346,11 +357,11 @@ void
 
 void
     print_StringList (
-        void *  data,
-        int     max
+        struct List *   data,
+        int             max
 )
 {
-    print_list( data, print_String, max );
+    print_list( data, (print_func) print_String, max );
 }
 
 
@@ -371,12 +382,8 @@ int
     struct Directory *  dirs_tail;
     struct Misc *       misc_tail;
 
-    //struct List *   path;
-
-//wprintf( L"traverse: %s (%d)\n", build_tree_path, build_tree_path_len );
-wprintf(L"\r%d dirs, %d files ", count( all_dirs ), count( all_files ) );
-//print_StringList( this->path, 256 );
-//wprintf(L"     ");
+    /* wprintf( L"traverse: %s (%d)\n", build_tree_path, build_tree_path_len ); */
+    wprintf(L"\r%d dirs, %d files ", count( all_dirs ), count( all_files ) );
 
     this->n_files   = 0;
     this->files     = NULL;
@@ -594,7 +601,7 @@ wprintf(L"\r%d dirs, %d files ", count( all_dirs ), count( all_files ) );
 
                         ++this->n_files;
                         /* hash into approriate filesize bucket */
-                        hash_file( file );
+                        fzhash_file( file );
 
                         /* add to all_files bucket */
                         enqueue( all_files, file );
@@ -912,10 +919,9 @@ void
 
 void
     print_File (
-        void * data
+        struct File * file
 )
 {
-    struct File * file = data;
     print_StringList( file->path, 256 );
     wprintf( L" (%I64d)\n", file->size);
 }
@@ -952,7 +958,7 @@ void
     wprintf(L"done (%d ticks)\n", clock()-t0);
     delete_List(copy);
 
-    print_list(copy, print_File, 50);
+    print_list(copy, (print_func) print_File, 50);
 }
 
 void
@@ -997,77 +1003,77 @@ void
 
 
 
-#define HASH_BUCKETS_NUM    (65536)
+#define FZHASH_BUCKETS_NUM    (65536)
 
-struct List *   hash_buckets;   /* array of <list of FilesizeBuckets> */
+struct List *   fzhash_buckets;   /* array of <list of FilesizeBuckets> */
 
 
 void
-    hashmap_init (
+    fzhash_init (
         void
 )
 {
     fa_FilesizeBucket = new_falloc( L"FilesizeBucket", sizeof(struct FilesizeBucket) );
 
-    hash_buckets = valloc( HASH_BUCKETS_NUM * sizeof(struct List) );
+    fzhash_buckets = valloc( FZHASH_BUCKETS_NUM * sizeof(struct List) );
 
-    if ( fa_FilesizeBucket && hash_buckets ) {
+    if ( fa_FilesizeBucket && fzhash_buckets ) {
 
         /* VirtualAlloc returns a zeroed buffer */
 
         /*
         int i;
 
-        for ( i = 0; i < HASH_BUCKETS_NUM; ++i) {
-            hash_buckets[ i ].head  = NULL;
-            hash_buckets[ i ].tail  = NULL;
-            hash_buckets[ i ].count = 0;
+        for ( i = 0; i < FZHASH_BUCKETS_NUM; ++i) {
+            fzhash_buckets[ i ].head  = NULL;
+            fzhash_buckets[ i ].tail  = NULL;
+            fzhash_buckets[ i ].count = 0;
         }
         */
 
     } else {
-        wprintf( L"valloc hash_buckets or new_falloc(fa_FilesizeBucket) failed\n" );
+        wprintf( L"valloc fzhash_buckets or new_falloc(fa_FilesizeBucket) failed\n" );
     }
 
 }
 
 void
-    hashmap_cleanup (
+    fzhash_cleanup (
         void
 )
 {
     delete_falloc( fa_FilesizeBucket );
-    vfree( hash_buckets );
+    vfree( fzhash_buckets );
 }
 
 
-int hash_num_files;
-int hash_num_fzbuckets;
+int fzhash_num_files;
+int fzhash_num_fzbuckets;
 
 void
-    hash_stats (
+    fzhash_stats (
         void
 )
 {
 }
 
 void
-    hash_file (
+    fzhash_file (
         struct File *   file
 )
 {
     long long int           size;
     struct Iter *           iter;
-    struct List *           hash_bucket;
+    struct List *           fzhash_bucket;
 
     struct FilesizeBucket * fzbucket;
 
 
     size = file->size;
 
-    hash_bucket = &hash_buckets[ size % HASH_BUCKETS_NUM ];
+    fzhash_bucket = &fzhash_buckets[ size % FZHASH_BUCKETS_NUM ];
 
-    iter = iterator( hash_bucket );
+    iter = iterator( fzhash_bucket );
 
     for ( fzbucket = next( iter );
             (fzbucket != NULL) && (size > fzbucket->size);
@@ -1086,16 +1092,16 @@ void
         fzbucket->size  = size;
         fzbucket->files = new_List( );
 
-        insert( hash_bucket, iter, fzbucket );
+        insert( fzhash_bucket, iter, fzbucket );
 
-        ++hash_num_fzbuckets;
+        ++fzhash_num_fzbuckets;
     }
 
     done( iter );
 
     enqueue( fzbucket->files, file );
 
-    ++hash_num_files;
+    ++fzhash_num_files;
 /*
 {
     void print_full_filename( struct File * file );
@@ -1190,54 +1196,6 @@ long long int   total_ditto_count;
 
 
 void
-    ditto_files (
-        void
-)
-{
-    int i;
-    //int pre_ditto, pre_partial;
-
-//int t0=clock();
-
-    ditto_buckets       = new_List( );
-
-    retry_fzbuckets     = new_List( );
-    partial_fzbuckets   = new_List( );
-
-    unique_files        = new_List( );
-    error_files         = new_List( );
-
-
-    fa_PreDittoContext  = new_falloc( L"PreDittoContext", sizeof(struct PreDittoContext) );
-    fa_Buffer           = new_falloc( L"Buffer", BUF_SIZE );
-
-wprintf(L"dittoing files ..\n");
-    for (i = 0; i < HASH_BUCKETS_NUM; ++i) {
-        file_dittoer( &hash_buckets[ i ] );
-    }
-
-wprintf(L"retrying failed files ..\n");
-    file_dittoer( retry_fzbuckets );
-
-
-//    pre_ditto   = ditto_buckets->count;
-//    pre_partial = partial_fzbuckets->count;
-
-wprintf( L"\rpartial dittoing done: ditto=%d, partial=%d                         \n", ditto_buckets->count, partial_fzbuckets->count );
-
-/*
-    file_dittoer( partial_fzbuckets );
-
-wprintf( L"\rdittoing complete: ditto=%d (was ditto=%d, partial=%d)                        \n", ditto_buckets->count, pre_ditto, pre_partial );
-*/
-    delete_falloc( fa_Buffer );
-    delete_falloc( fa_PreDittoContext );
-
-    hashmap_cleanup( );
-}
-
-
-void
     file_dittoer (
         struct List *   fzbuckets_list
 )
@@ -1312,7 +1270,7 @@ wprintf(L"\rdittoing bucket (num=%d), size=%I64d, count=%d, offs=%I64d          
 
 //wprintf(L"\rditto #%d count=%d, size=%I64d (ticks=%d) [total count=%I64d, size=%I64d]:                     \n",
 //ditto_buckets->count, fzbucket->files->count, size, clock()-t0, total_ditto_count, total_ditto_size);
-//print_list(fzbucket->files, print_File, 50);
+//print_list(fzbucket->files, (print_func) print_File, 50);
 //wprintf(L"--\n");
 
             ffree( fa_FilesizeBucket, fzbucket );
@@ -1566,11 +1524,6 @@ wprintf(L"error on retry: %s\n", path);
                 total_ditto_count   += preDit->files->count;
                 total_ditto_size    += size * (preDit->files->count - 1); // redundant bytes
 
-//wprintf(L"\rditto #%d count=%d, size=%I64d (ticks=%d) [total count=%I64d, size=%I64d]                       ",
-//ditto_buckets->count, preDit->files->count, size, clock()-t0, total_ditto_count, total_ditto_size);
-//print_list(preDit->files, print_File, 50);
-//wprintf(L"--\n");
-
             } else { /* partially matched : push a new FilesizeBucket to compare next set of bytes */
 
                 /* push a new FilesizeBucket to compare next set of bytes */
@@ -1599,7 +1552,50 @@ wprintf(L"error on retry: %s\n", path);
         }
     }
 
-    delete_List( fzbuckets_list );
+}
+
+
+void
+    ditto_files (
+        void
+)
+{
+    int i;
+
+    ditto_buckets       = new_List( );
+
+    retry_fzbuckets     = new_List( );
+    partial_fzbuckets   = new_List( );
+
+    unique_files        = new_List( );
+    error_files         = new_List( );
+
+
+    fa_PreDittoContext  = new_falloc( L"PreDittoContext", sizeof(struct PreDittoContext) );
+    fa_Buffer           = new_falloc( L"Buffer", BUF_SIZE );
+
+wprintf(L"dittoing files ..\n");
+    for (i = 0; i < FZHASH_BUCKETS_NUM; ++i) {
+        file_dittoer( &fzhash_buckets[ i ] );
+    }
+
+wprintf(L"\nretrying failed files ..\n");
+    file_dittoer( retry_fzbuckets );
+    delete_List( retry_fzbuckets );
+
+wprintf( L"\rpartial dittoing done: ditto=%d, partial=%d                         \n", ditto_buckets->count, partial_fzbuckets->count );
+
+
+/*
+    pre_ditto   = ditto_buckets->count;
+    pre_partial = partial_fzbuckets->count;
+    file_dittoer( partial_fzbuckets );
+
+    wprintf( L"\rdittoing complete: ditto=%d (was ditto=%d, partial=%d)                        \n", ditto_buckets->count, pre_ditto, pre_partial );
+*/
+
+    delete_falloc( fa_Buffer );
+    delete_falloc( fa_PreDittoContext );
 }
 
 
@@ -1656,7 +1652,7 @@ void
         int                 score
 )
 {
-    if ((dir == NULL) || (dir == this)) {
+    if (dir == NULL) {
 
         return;
 
@@ -1717,7 +1713,17 @@ void
     struct File *       file;
     struct Directory *  dir;
 
+    int idenchild_files_score;
+    int idenchild_dirs_score;
+
+    int my_score;
+
+//wprintf(L"fuzzy matching dirs for: %s\n", this->name);
+
     this->similar = new_List( );
+
+    idenchild_files_score = 0;
+    idenchild_dirs_score  = 0;
 
     for (file = this->files; file != NULL; file = file->sibling) {
 
@@ -1729,10 +1735,26 @@ void
             iter = iterator( file->bucket );
 
             for (ditto_file = next( iter ); ditto_file != NULL; ditto_file = next( iter )) {
-                hash_dir( this, ditto_file->parent, 1 );
+
+                if (ditto_file->parent != this) {
+
+                    hash_dir( this, ditto_file->parent, 1 );
+
+                } else if (ditto_file != file) {
+
+                    ++idenchild_files_score;
+
+                } else {
+
+                    ++my_score;
+                }
             }
 
             done( iter );
+
+        } else {
+
+            ++my_score;
 
         }
 
@@ -1741,7 +1763,7 @@ void
     for (dir = this->dirs; dir != NULL; dir = dir->sibling) {
 
         struct Iter *       iter;
-        struct SimilarDir * dir_similar;
+        struct SimilarDir * similar_dir;
 
         if (dir->similar == NULL) {
             fuzzy_match_dirs( dir );
@@ -1749,16 +1771,27 @@ void
 
         iter = iterator( dir->similar );
 
-        for (dir_similar = next( iter );
-                dir_similar != NULL;
-                    dir_similar = next( iter )) {
-            hash_dir( this, dir_similar->dir->parent, dir_similar->score );
+        for (similar_dir = next( iter );
+                similar_dir != NULL;
+                    similar_dir = next( iter )) {
+
+            if (similar_dir->dir->parent != this) {
+
+                hash_dir( this, similar_dir->dir->parent, similar_dir->score );
+
+            } else {
+
+                idenchild_dirs_score += similar_dir->score;
+
+            }
+
         }
 
         done( iter );
     }
 
     merge_sort( this->similar, (compare_func)compare_SimilarDir );
+
 }
 
 void
@@ -1780,24 +1813,29 @@ void
         }
 
         {
-            int                 p;
-            struct Iter *       i;
-            struct SimilarDir * sd;
+            if (count( dir->similar ) > 0) {
 
-            wprintf(L"\nfuzzy matches for \"%s\" count=%d [dirs=%I64d, files=%I64d, misc=%I64d]:\n",
-                full_path_dir( dir ), count( dir->similar ), dir->n_all_dirs, dir->n_all_files, dir->n_all_misc );
+                int                 p;
+                struct Iter *       i;
+                struct SimilarDir * sd;
 
-            i = iterator( dir->similar );
+                i = iterator( dir->similar );
 
-            for (p = 0, sd = next( i ); sd != NULL && p < 10; sd = next( i )) {
-                if (sd->score > 1) {
-                    wprintf( L"%8d -> %s\n", sd->score, full_path_dir( sd->dir ) );
-                    ++p;
+                for (p = 0, sd = next( i ); sd != NULL && p < 10; sd = next( i )) {
+                    if (sd->score > 1) {
+                        if (p == 0) {
+                            wprintf(L"\nfuzzy matches for \"%s\" count=%d [dirs=%I64d, files=%I64d, misc=%I64d]:\n",
+                                    full_path_dir( dir ), count( dir->similar ), dir->n_all_dirs, dir->n_all_files, dir->n_all_misc );
+                        }
+
+                        wprintf( L"%8d -> %s\n", sd->score, full_path_dir( sd->dir ) );
+                        ++p;
+                    }
                 }
-            }
 
-            done( i );
-            //getchar();
+                done( i );
+                //getchar();
+            }
         }
 
     }
