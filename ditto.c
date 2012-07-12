@@ -388,6 +388,11 @@ wprintf(L"\r%d dirs, %d files ", count( all_dirs ), count( all_files ) );
     this->misc      = NULL;
     misc_tail       = NULL;
 
+    this->n_all_files   = 0;
+    this->n_all_dirs    = 0;
+    this->n_all_misc    = 0;
+
+    this->similar       = NULL;
 
     /* using pre-setup 'build_tree_path' and 'build_tree_path_len' globals */
 
@@ -609,6 +614,9 @@ wprintf(L"\r%d dirs, %d files ", count( all_dirs ), count( all_files ) );
 
         CloseHandle( hD );
 
+        this->n_all_files   = this->n_files;
+        this->n_all_dirs    = this->n_dirs;
+        this->n_all_misc    = this->n_misc;
 
         /* traverse child dirs */
 
@@ -628,6 +636,10 @@ wprintf(L"\r%d dirs, %d files ", count( all_dirs ), count( all_files ) );
                 build_tree_path[build_tree_path_len] = 0;
 
                 build_tree( dir /*, build_tree_path, build_tree_path_len + 1 + len */ );
+
+                this->n_all_files   += dir->n_all_files;
+                this->n_all_dirs    += dir->n_all_dirs;
+                this->n_all_misc    += dir->n_all_misc;
             }
 
             /* restore 'build_tree_path' and 'build_tree_path_len' globals */
@@ -993,11 +1005,11 @@ void
         void
 )
 {
-    hash_buckets = valloc( HASH_BUCKETS_NUM * sizeof(struct List) );
-
     fa_FilesizeBucket = new_falloc( L"FilesizeBucket", sizeof(struct FilesizeBucket) );
 
-    if ( hash_buckets && fa_FilesizeBucket ) {
+    hash_buckets = valloc( HASH_BUCKETS_NUM * sizeof(struct List) );
+
+    if ( fa_FilesizeBucket && hash_buckets ) {
 
         /* VirtualAlloc returns a zeroed buffer */
 
@@ -1630,30 +1642,6 @@ wchar_t *
     return name;
 }
 
-void
-    print_similardir (
-        void *  d
-)
-{
-    struct SimilarDir * similar = (struct SimilarDir *)d;
-    wchar_t *   path;
-
-    path = full_path_dir( similar->dir );
-    wprintf( L"(%8p, %8p): %8d -> %s\n", similar, similar->dir, similar->score, path );
-    ffree( fa_String, path );
-}
-
-
-
-void
-    print_dirsimlist (
-        struct SimilarDir * sd
-)
-{
-    wprintf(L"(%p = %p) ", sd, sd->dir);
-}
-
-
 
 void
     hash_dir (
@@ -1662,21 +1650,14 @@ void
         int                 score
 )
 {
-    struct Iter *       iter;
-    struct SimilarDir * dir_similar;
-
-    if (dir == NULL) {
+    if ((dir == NULL) || (dir == this)) {
 
         return;
 
-/*  } else if (dir == this) {
-
-        this->self_score += score;
-        return;
-*/
     } else {
 
-//print_list( this->similar, (print_func)print_dirsimlist, 100); wprintf(L"\n");
+        struct Iter *       iter;
+        struct SimilarDir * dir_similar;
 
         iter = iterator( this->similar );
 
@@ -1688,11 +1669,7 @@ void
 
         if ((dir_similar == NULL) || (dir != dir_similar->dir)) {
 
-void * t = dir_similar;
-
             dir_similar = malloc( sizeof(struct SimilarDir) );
-
-//wprintf(L"new dir_similar (this=%p, dir=%p, found=%p, new=%p) score=%d\n", this, dir, t, dir_similar, score);
 
             if (dir_similar == NULL) {
                 wprintf( L"alloc SimilarDir failed\n" );
@@ -1708,22 +1685,11 @@ void * t = dir_similar;
 
             dir_similar->score += score;
 
-//wprintf(L"matching dir_similar (this=%p, dir=%p, found=%p) score=%d\n", this, dir, dir_similar, score);
         }
-//print_list( this->similar, (print_func)print_dirsimlist, 100); wprintf(L"\n\n");
 
     }
 
-
-#if 0
-{
-    wchar_t * path0;
-    wchar_t * path1;
-    path0 = full_path_dir( this );
-    path1 = full_path_dir( dir );
-//wprintf(L"hash dir %4d: %s => %s\n", dir_similar->score, path0, path1 );
-}
-#endif
+//wprintf(L"hash dir %4d: %s => %s\n", dir_similar->score, full_path_dir( this ), full_path_dir( dir ) );
 
 }
 
@@ -1749,18 +1715,21 @@ void
 
     for (file = this->files; file != NULL; file = file->sibling) {
 
-        struct Iter *   iter;
-        struct File *   file_ditto;
-
         if (file->bucket != NULL) {
+
+            struct Iter *   iter;
+            struct File *   ditto_file;
+
             iter = iterator( file->bucket );
 
-            for (file_ditto = next( iter ); file_ditto != NULL; file_ditto = next( iter )) {
-                hash_dir( this, file_ditto->parent, 1 );
+            for (ditto_file = next( iter ); ditto_file != NULL; ditto_file = next( iter )) {
+                hash_dir( this, ditto_file->parent, 1 );
             }
 
             done( iter );
+
         }
+
     }
 
     for (dir = this->dirs; dir != NULL; dir = dir->sibling) {
@@ -1800,19 +1769,30 @@ void
 
     for (dir = next( iter ); dir != NULL; dir = next( iter )) {
 
-wchar_t * path = full_path_dir( dir );
-
         if (dir->similar == NULL) {
-
-//wprintf( L"fuzzy matching dir: %s\n", path );
 
             fuzzy_match_dirs( dir );
 
         }
 
-wprintf(L"\nfuzzy matches for \"%s\" (%p) count=%d ditto_score=%d:\n", path, dir, count( dir->similar ), dir->self_score);
-print_list( dir->similar, print_similardir, 5 );
-//getchar();
+        if (count( dir->similar ) > 1) {
+
+            struct Iter *       i;
+            struct SimilarDir * sd;
+
+            wprintf(L"\nfuzzy matches for \"%s\" count=%d ditto_score=%d:\n", full_path_dir( dir ), count( dir->similar ), dir->self_score);
+
+            i = iterator( dir->similar );
+
+            for (sd = next( i ); sd != NULL; sd = next( i )) {
+                if (sd->score > 1) {
+                    wprintf( L"%8d -> %s\n", sd->score, full_path_dir( sd->dir ) );
+                }
+            }
+
+            done( i );
+            //getchar();
+        }
 
     }
 

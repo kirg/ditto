@@ -6,8 +6,8 @@
 
 
 
-#define VIRTALLOC_MINSIZE   (2048*1024) /* 2 MiB */
-#define VIRTALLOC_MAXSIZE   (65535*1024) /* 64 MiB */
+#define VIRTALLOC_MINSIZE   (64*1024) /* 64 kiB */
+#define VIRTALLOC_MAXSIZE   (16384*1024) /* 16 MiB */
 
 #define VIRTALLOC_FACTOR    (2)
 

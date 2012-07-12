@@ -43,6 +43,7 @@ struct Iter {
 
 
 extern FastAlloc fa_List;
+extern FastAlloc fa_Node;
 
 void
     list_init (
@@ -73,31 +74,6 @@ struct List *
 }
 
 static inline
-struct Node *
-    new_Node (
-        void
-)
-{
-    struct Node * node = falloc( fa_Node, sizeof(struct Node) );
-
-    if (node) {
-        node->next = 0;
-        node->data = NULL;
-    }
-
-    return node;
-}
-
-static inline
-void
-    delete_Node (
-        struct Node *   node
-)
-{
-    ffree( fa_List, node );
-}
-
-static inline
 void
     delete_List (
         struct List *   list
@@ -108,7 +84,7 @@ void
 
     for (node = list->head; node != NULL; node = next) {
         next = node->next;
-        ffree( fa_List, node );
+        ffree( fa_Node, node );
     }
 
     ffree( fa_List, list );
@@ -156,12 +132,6 @@ struct Iter *
 {
     struct Iter * iter = falloc( fa_List, sizeof(struct Iter) );
 
-/*
-    if (iter != NULL) {
-        iter->current   = list->head;
-        iter->previous  = NULL;
-    }
-*/
     if (iter != NULL) {
         iter->current   = NULL;
         iter->previous  = NULL;
@@ -218,7 +188,7 @@ void
 {
     struct Node * node;
 
-    node = falloc( fa_List, sizeof(struct Node) );
+    node = falloc( fa_Node, sizeof(struct Node) );
 
     if (node != NULL) {
 
@@ -280,7 +250,7 @@ void
 {
     struct Node * node;
 
-    node = falloc( fa_List, sizeof(struct Node) );
+    node = falloc( fa_Node, sizeof(struct Node) );
 
     if (node != NULL) {
 
@@ -322,7 +292,7 @@ void *
             list->tail = NULL;
         }
 
-        ffree( fa_List, node );
+        ffree( fa_Node, node );
 
         --list->count;
 
@@ -342,7 +312,7 @@ void
 {
     struct Node * node;
 
-    node = falloc( fa_List, sizeof(struct Node) );
+    node = falloc( fa_Node, sizeof(struct Node) );
 
     if (node != NULL) {
 
@@ -390,7 +360,7 @@ struct List *
             struct Node *  c;
             struct Node *  tail;
 
-            c = falloc( fa_List, sizeof(struct Node) );
+            c = falloc( fa_Node, sizeof(struct Node) );
 
             if (c) {
 
@@ -402,7 +372,7 @@ struct List *
 
                 for (l = l->next; l != NULL; l = l->next) {
 
-                    c = falloc( fa_List, sizeof(struct Node) );
+                    c = falloc( fa_Node, sizeof(struct Node) );
 
                     if (c) {
                         c->data = l->data;

@@ -65,8 +65,10 @@ struct Directory {
     int                 n_misc; // FIXME: n_links?
     struct Misc *       misc;   // FIXME: links?
 
+    long long int       n_all_files;
+    long long int       n_all_dirs;
+    long long int       n_all_misc;
 
-    int                 self_score; 
     struct List *       similar;
 };
 
