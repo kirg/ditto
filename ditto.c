@@ -305,7 +305,9 @@ t0=clock();
 
         build_tree( &scan_dir->dir );
 
-wprintf(L"\rdone (%d ticks)                                                    \n", clock()-t0);
+wprintf(L"\rdone [dirs=%I64d, files=%I64d, misc=%I64d] (%d ticks)                                                    \n",
+    scan_dir->dir.n_all_dirs, scan_dir->dir.n_all_files, scan_dir->dir.n_all_misc, clock()-t0);
+
     }
 
     done( iter );
@@ -400,7 +402,7 @@ wprintf(L"\r%d dirs, %d files ", count( all_dirs ), count( all_files ) );
             FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                 NULL, OPEN_EXISTING,
                     FILE_ATTRIBUTE_NORMAL | FILE_FLAG_BACKUP_SEMANTICS |
-                        FILE_FLAG_OPEN_REPARSE_POINT | FILE_CREATE_TREE_CONNECTION, NULL );
+                        /* FILE_FLAG_OPEN_REPARSE_POINT | */ FILE_CREATE_TREE_CONNECTION, NULL );
 
     if (hD != INVALID_HANDLE_VALUE) {
 
@@ -734,8 +736,8 @@ struct List *
 void
     print_buffer (
         void *          buffer,
-        int             len,
         unsigned int    offset,
+        unsigned int    len,
         const wchar_t * prefix,
         unsigned int    mark_offset,
         const wchar_t   marker
@@ -1214,8 +1216,8 @@ wprintf(L"dittoing files ..\n");
         file_dittoer( &hash_buckets[ i ] );
     }
 
-//wprintf(L"dittoing files ..\n");
-//    file_dittoer( retry_fzbuckets );
+wprintf(L"retrying failed files ..\n");
+    file_dittoer( retry_fzbuckets );
 
 
 //    pre_ditto   = ditto_buckets->count;
@@ -1230,6 +1232,8 @@ wprintf( L"\rdittoing complete: ditto=%d (was ditto=%d, partial=%d)             
 */
     delete_falloc( fa_Buffer );
     delete_falloc( fa_PreDittoContext );
+
+    hashmap_cleanup( );
 }
 
 
@@ -1413,11 +1417,11 @@ wprintf(L"\rdittoing bucket (num=%d), size=%I64d, count=%d, offs=%I64d          
                         /* this is for the (very) uncommon case where the checksum is the same, but the buffers differ */
 
 { int print_offs, print_len;
-  print_offs = (diff_at < 32) ? 0 : diff_at-32;
+  print_offs = (diff_at < 255) ? 0 : diff_at-127;
   print_len  = ((print_offs + 256) > len) ? (len - print_offs) : 256;
   wprintf( L"\n## checksum mismatch sum=0x%08X offs=0x%X (size=%I64d) ##\n", checksum, diff_at, size );
-  print_buffer(buf,         print_len, print_offs, L"BUF ", diff_at, L'*' ); wprintf(L"--\n");
-  print_buffer(preDit->buf, print_len, print_offs, L"PRE ", diff_at, L'*' ); /* getchar(); */ }
+  print_buffer(buf,         print_offs, print_len, L"BUF ", diff_at, L'*' ); wprintf(L"--\n");
+  print_buffer(preDit->buf, print_offs, print_len, L"PRE ", diff_at, L'*' ); /* getchar(); */ }
 
                         diff_at2 = 0;
 
@@ -1594,6 +1598,8 @@ wprintf(L"error on retry: %s\n", path);
             }
         }
     }
+
+    delete_List( fzbuckets_list );
 }
 
 
@@ -1770,23 +1776,23 @@ void
     for (dir = next( iter ); dir != NULL; dir = next( iter )) {
 
         if (dir->similar == NULL) {
-
             fuzzy_match_dirs( dir );
-
         }
 
-        if (count( dir->similar ) > 1) {
-
+        {
+            int                 p;
             struct Iter *       i;
             struct SimilarDir * sd;
 
-            wprintf(L"\nfuzzy matches for \"%s\" count=%d ditto_score=%d:\n", full_path_dir( dir ), count( dir->similar ), dir->self_score);
+            wprintf(L"\nfuzzy matches for \"%s\" count=%d [dirs=%I64d, files=%I64d, misc=%I64d]:\n",
+                full_path_dir( dir ), count( dir->similar ), dir->n_all_dirs, dir->n_all_files, dir->n_all_misc );
 
             i = iterator( dir->similar );
 
-            for (sd = next( i ); sd != NULL; sd = next( i )) {
+            for (p = 0, sd = next( i ); sd != NULL && p < 10; sd = next( i )) {
                 if (sd->score > 1) {
                     wprintf( L"%8d -> %s\n", sd->score, full_path_dir( sd->dir ) );
+                    ++p;
                 }
             }
 
