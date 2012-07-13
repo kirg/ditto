@@ -1718,12 +1718,29 @@ void
 
     int my_score;
 
+    struct Collection * file_buckets;
+
 //wprintf(L"fuzzy matching dirs for: %s\n", this->name);
 
     this->similar = new_List( );
 
     idenchild_files_score = 0;
     idenchild_dirs_score  = 0;
+
+
+    file_buckets = new_Collection( );
+
+    for (file = this->files; file != NULL; file = file->sibling) {
+        if (file->bucket != NULL) {
+            collect( file_buckets, file->bucket );
+        }
+    }
+
+
+    /* ... */
+
+    delete_Collection( file_buckets );
+
 
     for (file = this->files; file != NULL; file = file->sibling) {
 

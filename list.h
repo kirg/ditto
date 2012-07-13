@@ -519,5 +519,135 @@ wprintf(L"falloc left_list/right_list failed\n");
 }
 
 
+struct Collection {
+    struct List *   list;
+
+    int             elems;
+    int             unique_elems;
+};
+
+struct Elem {
+    void *  key;
+    int     count;
+};
+
+
+static inline
+struct Collection *
+    new_Collection (
+        void
+)
+{
+    struct Collection * collection;
+
+    collection = falloc( fa_List, sizeof(struct Collection) );
+
+    if (collection) {
+
+        collection->list = new_List( );
+
+        if (collection->list) {
+            collection->elems = 0;
+            collection->unique_elems = 0;
+        } else {
+            ffree( fa_List, collection );
+            wprintf(L"alloc Collection failed\n");
+        }
+    }
+
+    return collection;
+}
+
+static inline
+void
+    delete_Collection (
+        struct Collection * collection
+)
+{
+    delete_List( collection->list );
+    ffree( fa_List, collection );
+}
+
+
+static inline
+void
+    collect (
+        struct Collection * collection,
+        void *              key
+)
+{
+    struct Iter *   iter;
+    struct Elem *   elem;
+
+    iter = iterator( collection->list );
+
+    for (elem = next( iter );
+            (elem != NULL) && (key > elem->key);
+                elem = next( iter ));
+
+    done( iter );
+
+    if ((elem == NULL) || (key != elem->key)) {
+
+        elem = falloc( fa_Node, sizeof(struct Elem) );
+
+        if (elem == NULL) {
+            wprintf( L"alloc Elem failed\n" );
+            return;
+        }
+
+        elem->key    = key;
+        elem->count  = 1;
+
+        insert( collection->list, iter, elem );
+
+    } else {
+
+        ++elem->count;
+
+    }
+}
+
+static inline
+void
+    collect_n (
+        struct Collection * collection,
+        void *              key,
+        int                 count
+)
+{
+    struct Iter *   iter;
+    struct Elem *   elem;
+
+    iter = iterator( collection->list );
+
+    for (elem = next( iter );
+            (elem != NULL) && (key > elem->key);
+                elem = next( iter ));
+
+    done( iter );
+
+    if ((elem == NULL) || (key != elem->key)) {
+
+        elem = falloc( fa_Node, sizeof(struct Elem) );
+
+        if (elem == NULL) {
+            wprintf( L"alloc Elem failed\n" );
+            return;
+        }
+
+        elem->key    = key;
+        elem->count  = count;
+
+        insert( collection->list, iter, elem );
+
+    } else {
+
+        elem->count += count;
+
+    }
+}
+
+
 #endif
 
