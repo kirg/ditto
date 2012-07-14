@@ -42,8 +42,8 @@ struct Misc {
 
 struct SimilarDir {
     struct Directory *  dir;
-
-    int                 score;
+    int                 n_files;
+    int                 n_dirs;
 };
 
 

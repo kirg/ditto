@@ -1649,11 +1649,13 @@ void
     hash_dir (
         struct Directory *  this,
         struct Directory *  dir,
-        int                 score
+        int                 n_files,
+        int                 n_dirs
 )
 {
     if (dir == NULL) {
 
+wprintf(L"hash_dir: dir == NULL\n");
         return;
 
     } else {
@@ -1678,14 +1680,17 @@ void
                 return;
             }
 
-            dir_similar->dir    = dir;
-            dir_similar->score  = score;
+            dir_similar->dir = dir;
+
+            dir_similar->n_files = n_files;
+            dir_similar->n_dirs  = n_dirs;
 
             insert( this->similar, iter, dir_similar );
 
         } else {
 
-            dir_similar->score += score;
+            dir_similar->n_files += n_files;
+            dir_similar->n_dirs  += n_dirs;
 
         }
 
@@ -1701,7 +1706,16 @@ int
         struct SimilarDir * right
 )
 {
-    return (left->score > right->score) ? -1 : (left->score == right->score) ? 0 : 1;
+    /* FIXME: include check on n_dirs */
+    //return (left->n_files > right->n_files) ? -1 : (left->n_files == right->n_files) ? 0 : 1;
+
+    if (left->n_files == right->n_files && left->n_dirs == right->n_dirs) {
+        return 0;
+    } else if (left->n_files > right->n_files || (left->n_files == right->n_files && left->n_dirs > right->n_dirs)) {
+        return 1;
+    } else {
+        return -1;
+    }
 }
 
 
@@ -1711,40 +1725,29 @@ void
 )
 {
     struct File *       file;
-    struct Directory *  dir;
-
-    int idenchild_files_score;
-    int idenchild_dirs_score;
-
-    int my_score;
-
     struct Collection * file_buckets;
+
+    struct Directory *  dir;
 
 //wprintf(L"fuzzy matching dirs for: %s\n", this->name);
 
     this->similar = new_List( );
 
-    idenchild_files_score = 0;
-    idenchild_dirs_score  = 0;
+
+/*
+
+    Every directory's score is the number of matching files/dirs within
+
+    Dir A and Dir B have 'n' files ditto; then A's score is 'n'
+*/
+    //my_score = this->n_all_files + this->n_all_dirs;
 
 
     file_buckets = new_Collection( );
 
     for (file = this->files; file != NULL; file = file->sibling) {
-        if (file->bucket != NULL) {
-            collect( file_buckets, file->bucket );
-        }
-    }
 
-
-    /* ... */
-
-    delete_Collection( file_buckets );
-
-
-    for (file = this->files; file != NULL; file = file->sibling) {
-
-        if (file->bucket != NULL) {
+        if ((file->bucket != NULL) && !collect( file_buckets, file->bucket )) {
 
             struct Iter *   iter;
             struct File *   ditto_file;
@@ -1753,29 +1756,21 @@ void
 
             for (ditto_file = next( iter ); ditto_file != NULL; ditto_file = next( iter )) {
 
-                if (ditto_file->parent != this) {
+                if ((ditto_file->parent != this)) {
 
-                    hash_dir( this, ditto_file->parent, 1 );
+                    hash_dir( this, ditto_file->parent, 1, 0 );
 
-                } else if (ditto_file != file) {
-
-                    ++idenchild_files_score;
-
-                } else {
-
-                    ++my_score;
                 }
             }
 
             done( iter );
 
-        } else {
-
-            ++my_score;
-
         }
 
     }
+
+    delete_Collection( file_buckets );
+
 
     for (dir = this->dirs; dir != NULL; dir = dir->sibling) {
 
@@ -1794,14 +1789,9 @@ void
 
             if (similar_dir->dir->parent != this) {
 
-                hash_dir( this, similar_dir->dir->parent, similar_dir->score );
-
-            } else {
-
-                idenchild_dirs_score += similar_dir->score;
+                hash_dir( this, similar_dir->dir->parent, similar_dir->n_files, similar_dir->n_dirs );
 
             }
-
         }
 
         done( iter );
@@ -1809,6 +1799,7 @@ void
 
     merge_sort( this->similar, (compare_func)compare_SimilarDir );
 
+    /* FIXME: empty directories must point to other empty directories as being "similar" */
 }
 
 void
@@ -1839,13 +1830,13 @@ void
                 i = iterator( dir->similar );
 
                 for (p = 0, sd = next( i ); sd != NULL && p < 10; sd = next( i )) {
-                    if (sd->score > 1) {
+                    /* if (sd->n_files > 1 || sd->n_dirs > 1) */ {
                         if (p == 0) {
                             wprintf(L"\nfuzzy matches for \"%s\" count=%d [dirs=%I64d, files=%I64d, misc=%I64d]:\n",
                                     full_path_dir( dir ), count( dir->similar ), dir->n_all_dirs, dir->n_all_files, dir->n_all_misc );
                         }
 
-                        wprintf( L"%8d -> %s\n", sd->score, full_path_dir( sd->dir ) );
+                        wprintf( L"(%8d,%8d) -> %s\n", sd->n_files, sd->n_dirs, full_path_dir( sd->dir ) );
                         ++p;
                     }
                 }

@@ -570,12 +570,13 @@ void
 
 
 static inline
-void
+int
     collect (
         struct Collection * collection,
         void *              key
 )
 {
+    int             exists;
     struct Iter *   iter;
     struct Elem *   elem;
 
@@ -589,11 +590,13 @@ void
 
     if ((elem == NULL) || (key != elem->key)) {
 
+        exists = 0;
+
         elem = falloc( fa_Node, sizeof(struct Elem) );
 
         if (elem == NULL) {
             wprintf( L"alloc Elem failed\n" );
-            return;
+            return exists;
         }
 
         elem->key    = key;
@@ -601,21 +604,31 @@ void
 
         insert( collection->list, iter, elem );
 
+        ++collection->unique_elems;
+
+
     } else {
+
+        exists = 1;
 
         ++elem->count;
 
     }
+
+    ++collection->elems;
+
+    return exists;
 }
 
 static inline
-void
+int
     collect_n (
         struct Collection * collection,
         void *              key,
         int                 count
 )
 {
+    int             exists;
     struct Iter *   iter;
     struct Elem *   elem;
 
@@ -629,11 +642,13 @@ void
 
     if ((elem == NULL) || (key != elem->key)) {
 
+        exists = 0;
+
         elem = falloc( fa_Node, sizeof(struct Elem) );
 
         if (elem == NULL) {
             wprintf( L"alloc Elem failed\n" );
-            return;
+            return exists;
         }
 
         elem->key    = key;
@@ -641,11 +656,18 @@ void
 
         insert( collection->list, iter, elem );
 
+        ++collection->unique_elems;
+
     } else {
 
+        exists = 1;
         elem->count += count;
 
     }
+
+    collection->elems += count;
+
+    return exists;
 }
 
 
