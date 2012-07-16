@@ -1536,6 +1536,19 @@ wprintf(L"error on retry: %s\n", path);
                 fzbucket_new->size   = size;
                 fzbucket_new->files  = preDit->files;
 
+
+                { /* used by 'ditto_dirs' after partial dittoing */
+                    iter = iterator( preDit->files ); 
+
+                    for (file = next( iter ); file != NULL; file = next( iter )) {
+                        CloseHandle( file->hF );
+                        file->hF        = NULL;
+                        file->bucket    = preDit->files; /* points to ditto bucket */
+                    }
+
+                    done( iter );
+                }
+
                 push( partial_fzbuckets, fzbucket_new );
             }
 
@@ -1644,6 +1657,50 @@ wchar_t *
     return name;
 }
 
+wchar_t *
+    full_path_file (
+        struct File * file
+)
+{
+    struct List *       list;
+    struct Directory *  p;
+    wchar_t *           name;
+    int                 len;
+
+    list = new_List( );
+
+    push( list, file->name );
+    len = wcslen(file->name);
+
+    for (p = file->parent; p != NULL; p = p->parent) {
+        push( list, p->name );
+        len += wcslen(p->name);
+    }
+
+    name = falloc( fa_String, sizeof(wchar_t) * (len + 1) );
+
+    if (name) {
+        struct Iter *   iter;
+        wchar_t *       component;
+        int             end;
+
+        end = 0;
+
+        iter = iterator( list );
+
+        for (component = next( iter ); component != NULL; component = next( iter )) {
+            wcsncpy( name+end, component, len-end );
+            end += wcslen( component );
+        }
+
+        name[end] = 0;
+
+        done( iter );
+    }
+
+    return name;
+}
+
 
 void
     hash_dir (
@@ -1661,61 +1718,43 @@ wprintf(L"hash_dir: dir == NULL\n");
     } else {
 
         struct Iter *       iter;
-        struct SimilarDir * dir_similar;
+        struct SimilarDir * similar_dir;
 
         iter = iterator( this->similar );
 
-        for (dir_similar = next( iter );
-                (dir_similar != NULL) && (dir > dir_similar->dir);
-                    dir_similar = next( iter ));
+        for (similar_dir = next( iter );
+                (similar_dir != NULL) && (dir > similar_dir->dir);
+                    similar_dir = next( iter ));
 
         done( iter );
 
-        if ((dir_similar == NULL) || (dir != dir_similar->dir)) {
+        if ((similar_dir == NULL) || (dir != similar_dir->dir)) {
 
-            dir_similar = malloc( sizeof(struct SimilarDir) );
+            similar_dir = malloc( sizeof(struct SimilarDir) );
 
-            if (dir_similar == NULL) {
+            if (similar_dir == NULL) {
                 wprintf( L"alloc SimilarDir failed\n" );
                 return;
             }
 
-            dir_similar->dir = dir;
+            similar_dir->dir = dir;
 
-            dir_similar->n_files = n_files;
-            dir_similar->n_dirs  = n_dirs;
+            similar_dir->n_files = n_files;
+            similar_dir->n_dirs  = n_dirs;
 
-            insert( this->similar, iter, dir_similar );
+            insert( this->similar, iter, similar_dir );
 
         } else {
 
-            dir_similar->n_files += n_files;
-            dir_similar->n_dirs  += n_dirs;
+            similar_dir->n_files += n_files;
+            similar_dir->n_dirs  += n_dirs;
 
         }
 
+//wprintf(L"hash_dir( %d, %d ): %s => %s [f+d = %d+%d]\n", n_files, n_dirs, full_path_dir( this ), full_path_dir( dir ), similar_dir->n_files, similar_dir->n_dirs );
+
     }
 
-//wprintf(L"hash dir %4d: %s => %s\n", dir_similar->score, full_path_dir( this ), full_path_dir( dir ) );
-
-}
-
-int
-    compare_SimilarDir (
-        struct SimilarDir * left,
-        struct SimilarDir * right
-)
-{
-    /* FIXME: include check on n_dirs */
-    //return (left->n_files > right->n_files) ? -1 : (left->n_files == right->n_files) ? 0 : 1;
-
-    if (left->n_files == right->n_files && left->n_dirs == right->n_dirs) {
-        return 0;
-    } else if (left->n_files > right->n_files || (left->n_files == right->n_files && left->n_dirs > right->n_dirs)) {
-        return 1;
-    } else {
-        return -1;
-    }
 }
 
 
@@ -1757,7 +1796,7 @@ void
             for (ditto_file = next( iter ); ditto_file != NULL; ditto_file = next( iter )) {
 
                 if ((ditto_file->parent != this)) {
-
+//wprintf(L"[%d+%d] %s => %s\n", 1, 0, full_path_file( file ), full_path_file( ditto_file ));
                     hash_dir( this, ditto_file->parent, 1, 0 );
 
                 }
@@ -1788,8 +1827,8 @@ void
                     similar_dir = next( iter )) {
 
             if (similar_dir->dir->parent != this) {
-
-                hash_dir( this, similar_dir->dir->parent, similar_dir->n_files, similar_dir->n_dirs );
+//wprintf(L"[%d+%d] %s => %s\n", similar_dir->n_files, similar_dir->n_dirs, full_path_dir( dir ), full_path_dir( similar_dir->dir ));
+                hash_dir( this, similar_dir->dir->parent, similar_dir->n_files, 1 + similar_dir->n_dirs );
 
             }
         }
@@ -1797,10 +1836,38 @@ void
         done( iter );
     }
 
-    merge_sort( this->similar, (compare_func)compare_SimilarDir );
+    {
+        int
+            compare_SimilarDir (
+                struct SimilarDir * left,
+                struct SimilarDir * right
+        );
+
+        merge_sort( this->similar, (compare_func)compare_SimilarDir );
+    }
 
     /* FIXME: empty directories must point to other empty directories as being "similar" */
 }
+
+
+int
+    compare_SimilarDir (
+        struct SimilarDir * left,
+        struct SimilarDir * right
+)
+{
+    /* FIXME: include check on n_dirs */
+    //return (left->n_files > right->n_files) ? -1 : (left->n_files == right->n_files) ? 0 : 1;
+
+    if (left->n_files == right->n_files && left->n_dirs == right->n_dirs) {
+        return 0;
+    } else if (left->n_files < right->n_files || (left->n_files == right->n_files && left->n_dirs < right->n_dirs)) {
+        return 1;
+    } else {
+        return -1;
+    }
+}
+
 
 void
     ditto_dirs (
@@ -1832,11 +1899,11 @@ void
                 for (p = 0, sd = next( i ); sd != NULL && p < 10; sd = next( i )) {
                     /* if (sd->n_files > 1 || sd->n_dirs > 1) */ {
                         if (p == 0) {
-                            wprintf(L"\nfuzzy matches for \"%s\" count=%d [dirs=%I64d, files=%I64d, misc=%I64d]:\n",
-                                    full_path_dir( dir ), count( dir->similar ), dir->n_all_dirs, dir->n_all_files, dir->n_all_misc );
+                            wprintf(L"\nfuzzy matches for \"%s\" count=%d [%I64d+%I64d], misc=%I64d:\n",
+                                    full_path_dir( dir ), count( dir->similar ), dir->n_all_files, dir->n_all_dirs, dir->n_all_misc );
                         }
 
-                        wprintf( L"(%8d,%8d) -> %s\n", sd->n_files, sd->n_dirs, full_path_dir( sd->dir ) );
+                        wprintf( L"[%d+%d]\t-> %s\n", sd->n_files, sd->n_dirs, full_path_dir( sd->dir ) );
                         ++p;
                     }
                 }
