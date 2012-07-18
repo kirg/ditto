@@ -144,6 +144,7 @@ void *
 
     if (buf == NULL) {
         wprintf(L"falloc returned NULL (type=%s)\n", fac->type);
+        wprintf(L"enter to continue .."); getchar( );
     }
 
     return buf;
