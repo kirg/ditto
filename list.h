@@ -30,7 +30,7 @@ struct Node {
 struct Iter {
     struct Node *   current;
     struct Node *   previous;
-    struct List *   list;       /* used by 'next()' to find head */
+    struct List *   list;       /* used by 'l_next()' to find head */
 };
 
 
@@ -119,7 +119,7 @@ int
 
 static inline
 struct Iter *
-    iterator (
+    l_iterator (
         struct List *   list
 )
 {
@@ -136,18 +136,26 @@ struct Iter *
 
 static inline
 void *
-    next (
+    l_next (
         struct Iter *   iter
 )
 {
     void *  data;
 
+    //wprintf(L"l_next: iter=%p, list=%p, curr=%p, prev=%p\n", iter, iter->list, iter->current, iter->previous);
+
     if (iter != NULL) {
 
-        iter->previous  = iter->current;
-        iter->current   = (iter->current == NULL) ? iter->list->head : iter->current->next;
+        if (iter->current == NULL) {
+            iter->previous  = NULL;
+            iter->current   = iter->list->head;
 
-        data = (iter->current == NULL) ?  NULL/* EOL */: iter->current->data;
+        } else {
+            iter->previous  = iter->current;
+            iter->current   = iter->current->next;
+        }
+
+        data = (iter->current != NULL) ? iter->current->data : NULL/* EOL */;
 
     } else {
         data = NULL;
@@ -158,9 +166,19 @@ void *
 }
 
 static inline
+int
+    has_next (
+        struct Iter *   iter
+)
+{
+    return (iter != NULL) && (iter->current != NULL) && (iter->current->next != NULL);
+}
+
+
+
+static inline
 void
-    insert (
-        struct List *   list,
+    l_insert (
         struct Iter *   iter,
         void *          data
 )
@@ -178,39 +196,63 @@ void
             node->next              = iter->previous->next;
             iter->previous->next    = node;
 
-            if (iter->previous == list->tail) {
-                list->tail = node;
+            if (iter->previous == iter->list->tail) {
+                iter->list->tail = node;
             }
 
         } else /* if (iter->current != NULL) */ {
 
-            node->next  = list->head;
-            list->head  = node;
+            node->next  = iter->list->head;
+            iter->list->head  = node;
 
-            if (list->tail == NULL) {
-                list->tail = node;
+            if (iter->list->tail == NULL) {
+                iter->list->tail = node;
             }
         }
 
         iter->previous = node;
 
-        ++list->count;
+        ++iter->list->count;
     }
 }
 
 static inline
-int
-    has_next (
+void *
+    l_delete (
         struct Iter *   iter
 )
 {
-    return (iter != NULL) && (iter->current != NULL);
-}
+    if (iter->current != NULL) {
 
+        struct Node *   node;
+
+        node            = iter->current;
+        iter->current   = node->next;
+
+        if (iter->previous != NULL) {
+            iter->previous->next    = node->next;
+        } else {
+            iter->list->head        = node->next;
+        }
+            
+        if (iter->list->tail == node) {
+            iter->list->tail = iter->previous;
+        }
+
+        --iter->list->count;
+
+        ffree( fa_Node, node );
+
+        return (iter->current != NULL) ? iter->current->data : NULL;
+
+    } else {
+        return NULL;
+    }
+}
 
 static inline
 void
-    done (
+    l_done (
         struct Iter *   iter
 )
 {
@@ -222,7 +264,7 @@ void
 
 static inline
 void
-    enqueue (
+    l_enqueue (
         struct List *   list,
         void *          data
 )
@@ -250,7 +292,7 @@ void
 
 static inline
 void *
-    dequeue (
+    l_dequeue (
         struct List *   list
 )
 {
@@ -284,7 +326,7 @@ void *
 
 static inline
 void
-    push (
+    l_push (
         struct List *   list,
         void *          data
 )
@@ -313,17 +355,17 @@ void
 
 static inline
 void *
-    pop (
+    l_pop (
         struct List *   list
 )
 {
-    return dequeue( list );
+    return l_dequeue( list );
 }
 
 
 static inline
 struct List *
-    clone (
+    l_clone (
         struct List *   list
 )
 {
@@ -407,7 +449,7 @@ void
 
 static inline
 void
-    print_list (
+    l_print (
         struct List *   list,
         print_func      print,
         int             num
@@ -430,9 +472,10 @@ void
 }
 
 
+/* merge sort (in-place) list */
 static inline
 struct List *
-    merge_sort (
+    l_sort (
         struct List *   list,
         compare_func    compare
 )
@@ -468,8 +511,8 @@ struct List *
 
             iter->next = NULL;
 
-            left_list = merge_sort(left_list, compare);
-            right_list = merge_sort(right_list, compare);
+            left_list = l_sort(left_list, compare);
+            right_list = l_sort(right_list, compare);
 
             left    = left_list->head;
             right   = right_list->head;
@@ -580,13 +623,13 @@ int
     struct Iter *   iter;
     struct Elem *   elem;
 
-    iter = iterator( collection->list );
+    iter = l_iterator( collection->list );
 
-    for (elem = next( iter );
+    for (elem = l_next( iter );
             (elem != NULL) && (key > elem->key);
-                elem = next( iter ));
+                elem = l_next( iter ));
 
-    done( iter );
+    l_done( iter );
 
     if ((elem == NULL) || (key != elem->key)) {
 
@@ -602,7 +645,7 @@ int
         elem->key    = key;
         elem->count  = 1;
 
-        insert( collection->list, iter, elem );
+        l_insert( iter, elem );
 
         ++collection->unique_elems;
 
@@ -632,13 +675,13 @@ int
     struct Iter *   iter;
     struct Elem *   elem;
 
-    iter = iterator( collection->list );
+    iter = l_iterator( collection->list );
 
-    for (elem = next( iter );
+    for (elem = l_next( iter );
             (elem != NULL) && (key > elem->key);
-                elem = next( iter ));
+                elem = l_next( iter ));
 
-    done( iter );
+    l_done( iter );
 
     if ((elem == NULL) || (key != elem->key)) {
 
@@ -654,7 +697,7 @@ int
         elem->key    = key;
         elem->count  = count;
 
-        insert( collection->list, iter, elem );
+        l_insert( iter, elem );
 
         ++collection->unique_elems;
 
