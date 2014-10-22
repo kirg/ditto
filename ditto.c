@@ -8,14 +8,12 @@
 
 #include <time.h>       /* clock */
 
-
 /*
 #include <windef.h>
 #include <winnt.h>
 #include <ntdll.h>
 #include <ntdef.h>
 */
-
 
 #ifdef __GNUC__  
 #   include <ddk/ntifs.h>   /* NtQueryDirectoryFile, etc */
@@ -1192,7 +1190,7 @@ long long int   total_ditto_count;
 
 #define BUF_SIZE_ALIGN  (4096)
 
-#define MIN_SIZE        (0)
+#define MIN_SIZE        (6553500)
 
 
 void
@@ -1751,7 +1749,7 @@ wprintf(L"hash_dir: dir == NULL\n");
 
         }
 
-wprintf(L"hash_dir( %d, %d ): %s => %s [f+d = %d+%d]\n", n_files, n_dirs, full_path_dir( this ), full_path_dir( dir ), similar_dir->n_files, similar_dir->n_dirs );
+//wprintf(L"hash_dir( %d, %d ): %s => %s [f+d = %d+%d]\n", n_files, n_dirs, full_path_dir( this ), full_path_dir( dir ), similar_dir->n_files, similar_dir->n_dirs );
 
     }
 
@@ -1796,7 +1794,7 @@ void
             for (ditto_file = l_next( iter ); ditto_file != NULL; ditto_file = l_next( iter )) {
 
                 if ((ditto_file->parent != this)) {
-wprintf(L"[%d+%d] %s => %s\n", 1, 0, full_path_file( file ), full_path_file( ditto_file ));
+//wprintf(L"[%d+%d] %s => %s\n", 1, 0, full_path_file( file ), full_path_file( ditto_file ));
                     hash_dir( this, ditto_file->parent, 1, 0 );
 
                 }
@@ -1827,7 +1825,7 @@ wprintf(L"[%d+%d] %s => %s\n", 1, 0, full_path_file( file ), full_path_file( dit
                     similar_dir = l_next( iter )) {
 
             if (similar_dir->dir->parent != this) {
-wprintf(L"[%d+%d] %s => %s\n", similar_dir->n_files, similar_dir->n_dirs, full_path_dir( dir ), full_path_dir( similar_dir->dir ));
+//wprintf(L"[%d+%d] %s => %s\n", similar_dir->n_files, similar_dir->n_dirs, full_path_dir( dir ), full_path_dir( similar_dir->dir ));
                 hash_dir( this, similar_dir->dir->parent, similar_dir->n_files, 1 + similar_dir->n_dirs );
 
             }
