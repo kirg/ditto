@@ -1157,7 +1157,7 @@ int
 
 
 #define START_OFFSET    (0)
-#define BUF_SIZE        (256*1024)
+#define BUF_SIZE        (256*1024) // Windows read-ahead size
 
 #define ERROR_RETRIES   (3)
 
@@ -1185,12 +1185,13 @@ struct List *   error_files;
 
 long long int   total_ditto_size;
 long long int   total_ditto_count;
+long long int   total_read_size;
 
 
 
 #define BUF_SIZE_ALIGN  (4096)
 
-#define MIN_SIZE        (6553500)
+#define MIN_SIZE        (65536) // (0) // (6553500)
 
 
 void
@@ -1223,7 +1224,7 @@ void
         offs    = fzbucket->offs;
         size    = fzbucket->size;
 
-wprintf(L"\rdittoing bucket (num=%d), size=%I64d, count=%d, offs=%I64d          ", ditto_buckets->count, size, fzbucket->files->count, offs);
+wprintf(L"\rdittoing bucket: (num=%d), size=%I64d, offs=%I64d (count=%d)          ", ditto_buckets->count, size, offs, fzbucket->files->count );
 
         if (size < MIN_SIZE) {
 
@@ -1249,7 +1250,8 @@ wprintf(L"\rdittoing bucket (num=%d), size=%I64d, count=%d, offs=%I64d          
 
         if (offs >= size) {
 
-            /* we would really get here only for 0-byte files */
+            /* we should really get here only for 0-byte files */
+            /* assert( size == 0 ); */
 
             iter = l_iterator( fzbucket->files ); 
 
@@ -1370,7 +1372,7 @@ wprintf(L"\rdittoing bucket (num=%d), size=%I64d, count=%d, offs=%I64d          
 
                     } else {
 
-                        /* this is for the (very) uncommon case where the checksum is the same, but the buffers differ */
+                        /* this is for the (should be _very_) uncommon case where the checksum is the same, but the buffers differ */
 
 { int print_offs, print_len;
   print_offs = (diff_at < 255) ? 0 : diff_at-127;
@@ -1434,11 +1436,8 @@ wprintf(L"\rdittoing bucket (num=%d), size=%I64d, count=%d, offs=%I64d          
                                 preDit->next    = preDit_head;
                                 preDit_head     = preDit;
                             }
-
                         }
-
                     }
-
                 }
 
             } else {
@@ -1562,7 +1561,6 @@ wprintf(L"error on retry: %s\n", path);
             }
         }
     }
-
 }
 
 
@@ -1585,7 +1583,7 @@ void
     fa_PreDittoContext  = new_falloc( L"PreDittoContext", sizeof(struct PreDittoContext) );
     fa_Buffer           = new_falloc( L"Buffer", BUF_SIZE );
 
-wprintf(L"dittoing files ..\n");
+wprintf(L"dittoing files:n");
     for (i = 0; i < FZHASH_BUCKETS_NUM; ++i) {
         file_dittoer( &fzhash_buckets[ i ] );
     }
@@ -1597,13 +1595,12 @@ wprintf(L"\nretrying failed files ..\n");
 wprintf( L"\rpartial dittoing done: ditto=%d, partial=%d                         \n", ditto_buckets->count, partial_fzbuckets->count );
 
 
-/*
+    // now complete ditto-ing for partial files //
     pre_ditto   = ditto_buckets->count;
     pre_partial = partial_fzbuckets->count;
     file_dittoer( partial_fzbuckets );
 
     wprintf( L"\rdittoing complete: ditto=%d (was ditto=%d, partial=%d)                        \n", ditto_buckets->count, pre_ditto, pre_partial );
-*/
 
     delete_falloc( fa_Buffer );
     delete_falloc( fa_PreDittoContext );
@@ -1929,7 +1926,6 @@ void
                 //getchar();
             }
         }
-
     }
 
     l_done( iter );
