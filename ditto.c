@@ -1224,7 +1224,8 @@ void
         offs    = fzbucket->offs;
         size    = fzbucket->size;
 
-wprintf(L"\rdittoing bucket: (num=%d), size=%I64d, offs=%I64d (count=%d)          ", ditto_buckets->count, size, offs, fzbucket->files->count );
+// wprintf(L"\rdittoing bucket: (num=%d), size=%I64d, offs=%I64d (count=%d)          ", ditto_buckets->count, size, offs, fzbucket->files->count );
+wprintf(L"\r(size:%I64d, offs:%I64d) %d -> ", size, offs, fzbucket->files->count );
 
         if (size < MIN_SIZE) {
 
@@ -1488,6 +1489,8 @@ wprintf(L"error on retry: %s\n", path);
 
         preDit = preDit_head;
 
+        int unique = 0, ditto = 0, partial = 0;
+
         while (preDit != NULL) {
 
             if (preDit->files->count == 1) { /* UNIQUE file */
@@ -1501,6 +1504,8 @@ wprintf(L"error on retry: %s\n", path);
                 l_enqueue( unique_files, file );
 
                 delete_List( preDit->files );
+
+                ++unique;
 
             } else if (offs >= size) { /* DITTO file : these files match byte-to-byte */
 
@@ -1520,6 +1525,8 @@ wprintf(L"error on retry: %s\n", path);
 
                 total_ditto_count   += preDit->files->count;
                 total_ditto_size    += size * (preDit->files->count - 1); // redundant bytes
+
+                ditto = preDit->files->count;
 
             } else { /* partially matched : push a new FilesizeBucket to compare next set of bytes */
 
@@ -1547,7 +1554,11 @@ wprintf(L"error on retry: %s\n", path);
                 }
 
                 l_push( partial_fzbuckets, fzbucket_new );
+
+                partial = preDit->files->count;
             }
+
+            wprintf(L" (unique=%d, ditto=%d, partial=%d)                   ", unique, ditto, partial);
 
             ffree( fa_Buffer, preDit->buf );
 
@@ -1585,6 +1596,7 @@ void
 
 wprintf(L"dittoing files:n");
     for (i = 0; i < FZHASH_BUCKETS_NUM; ++i) {
+// wprintf(L"\ndittoing bucket #%d (of %d):\n", i, FZHASH_BUCKETS_NUM);
         file_dittoer( &fzhash_buckets[ i ] );
     }
 
@@ -1595,12 +1607,14 @@ wprintf(L"\nretrying failed files ..\n");
 wprintf( L"\rpartial dittoing done: ditto=%d, partial=%d                         \n", ditto_buckets->count, partial_fzbuckets->count );
 
 
+/*
     // now complete ditto-ing for partial files //
     pre_ditto   = ditto_buckets->count;
     pre_partial = partial_fzbuckets->count;
     file_dittoer( partial_fzbuckets );
 
     wprintf( L"\rdittoing complete: ditto=%d (was ditto=%d, partial=%d)                        \n", ditto_buckets->count, pre_ditto, pre_partial );
+*/
 
     delete_falloc( fa_Buffer );
     delete_falloc( fa_PreDittoContext );
